@@ -56,7 +56,7 @@ class TransactionDataIntegrityValidator {
         $paramsHash = hash(self::ALGORITHM_KEY, $concatenatedParams);
         $generatedHash = hash(self::ALGORITHM_KEY, $paramsHash . $this->basicConfig->getApiSecret());
 
-        if(!$generatedHash === $data[self::HASH_KEY]) {
+        if($generatedHash !== $data[self::HASH_KEY]) {
             throw new Exception(__('Invalid data integrity'));
         }
     }
