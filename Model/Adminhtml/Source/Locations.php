@@ -22,6 +22,10 @@ class Locations
                 'value' => "minicart",
                 'label' => __('Minicart')
             ],
+            [
+                'value' => "cart",
+                'label' => __('Cart Page')
+            ],
         ];
     }
 }

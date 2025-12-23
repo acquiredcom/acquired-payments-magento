@@ -2,6 +2,23 @@
 
 All notable release changes to this project will be documented in this file.
 
+## [1.1.2] - Release Version
+- Add ApplePay Express support for purchases on the cart page
+- Fix refund logic to check transaction age before attempting refund (orders under 24 hours old will use void instead)
+- Fix RequestBuilderValidator to properly handle Apple Pay and MOTO transactions in 3DS validation
+- Improve Express checkout flow by separating shipping calculation and transaction endpoints
+- Fix guest checkout email handling in Express checkout
+- Fix amount formatting in Express checkout to handle comma/space separators
+- Add proper quote deactivation after successful order placement
+- Remove Express payments from admin order creation (set can_use_internal to 0)
+- Remove locations configuration field from Express payments settings
+- Add CSP nonce support for inline scripts and styles in admin payment forms
+- Add module dependencies for Magento_Paypal and PayPal_Braintree
+- Move Apple Pay API endpoints from webapi.xml to dedicated controllers (Shipping.php, Transaction.php)
+- Add CartButton block for Apple Pay cart page integration
+- Improve error handling and logging in Express checkout flow
+- Code quality improvements and refactoring
+
 ## [1.1.0] - Release Version
 - Add ApplePay Express support for purchases on the minicart
 

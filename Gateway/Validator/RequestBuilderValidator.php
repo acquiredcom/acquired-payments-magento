@@ -66,11 +66,19 @@ class RequestBuilderValidator extends AbstractValidator
         if ($orderId !== $paymentAdditionalData['order_id']) {
             throw new BuilderException(__('Order ID does not match.'));
         }
-
-        // in case of apple pay, the hash will not be in the response so we skip the validation
-        $shouldValidateHash = $this->cardConfig->isTdsActive() &&
-            empty($paymentAdditionalData['multishipping']) &&
-            !in_array($transaction[TransactionResponseInterface::PAYMENT_METHOD], ['apple_pay']);
+        
+        $method = strtolower(trim($transaction[TransactionResponseInterface::PAYMENT_METHOD] ?? ''));
+        
+        $isApplePay = is_array($method)
+            ? in_array('apple_pay', $method, true)
+            : ($method === 'apple_pay');
+        
+        $isMoto = isset($transaction['transaction']['moto']) && (int)$transaction['transaction']['moto'] === 1;
+        
+        $shouldValidateHash = $this->cardConfig->isTdsActive()
+            && empty($paymentAdditionalData['multishipping'])
+            && !$isApplePay
+            && !$isMoto;
 
         if($shouldValidateHash) {
             if(empty($paymentAdditionalData['hash'])) {

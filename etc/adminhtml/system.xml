@@ -211,15 +211,7 @@
                         <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                         <config_path>payment/acquired_express_payments/active</config_path>
                     </field>
-                    <field id="locations" type="multiselect" showInDefault="1" showInWebsite="1" showInStore="1" sortOrder="20">
-                        <label>Locations</label>
-                        <comment>Choose the location(s) where you want the button to appear.</comment>
-                        <source_model>Acquired\Payments\Model\Adminhtml\Source\Locations</source_model>
-                        <config_path>payment/acquired_express_payments/locations</config_path>
-                        <depends>
-                            <field id="active">1</field>
-                        </depends>
-                    </field>
+
                     <!-- Apple Pay express settings -->
                     <group id="acquired_express_applepay" type="text" showInDefault="1" showInWebsite="1" showInStore="1" sortOrder="30">
                         <label>Apple Pay Settings</label>
@@ -242,6 +234,9 @@
                         <field id="applepaybuttonpreview" translate="label" type="text" showInDefault="1" showInWebsite="1" showInStore="1" sortOrder="30">
                             <label>Preview</label>
                             <frontend_model>Acquired\Payments\Block\Adminhtml\System\Config\ApplePayPreview</frontend_model>
+                            <depends>
+                                <field id="applepayactive">1</field>
+                            </depends>
                         </field>
                     </group>
                 </group>

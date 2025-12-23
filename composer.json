@@ -1,6 +1,6 @@
 {
   "name": "acquired/module-payments",
-  "version": "1.1.0",
+  "version": "1.1.2",
   "description": "Integration module for Acquired.com payment",
   "type": "magento2-module",
   "require": {
