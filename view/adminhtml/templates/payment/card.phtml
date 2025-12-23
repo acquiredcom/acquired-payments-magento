@@ -10,6 +10,10 @@ declare(strict_types=1);
  * This file is open source under the MIT license.
  * Please see LICENSE file for more details.
  */
+ 
+$objectManager =  \Magento\Framework\App\ObjectManager::getInstance();
+$nonceProvider = \Magento\Framework\App\ObjectManager::getInstance()->get(\Magento\Csp\Helper\CspNonceProvider::class);
+$nonce = $nonceProvider->generateNonce();
 ?>
 
 <fieldset class="admin__fieldset payment-method" id="payment_form_<?= $block->escapeHtml($block->getMethodCode()) ?>" >
@@ -17,7 +21,7 @@ declare(strict_types=1);
     <input type="hidden" id="acquired-txn-id" name="payment[transaction_id]">
     <input type="hidden" id="acquired-order-id" name="payment[order_id]">
     <input type="hidden" id="acquired-timestamp" name="payment[timestamp]">
-    <script>
+    <script nonce="<?= $nonce; ?>">
         require([
             'Acquired_Payments/js/card',
             'jquery'
@@ -32,7 +36,7 @@ declare(strict_types=1);
             window.ACQ_CONFIRM_PURCHASE_SESSION_URL = '<?= /** @noEscape */ $block->getUrl('acquired/session/confirm')?>';
         });
     </script>
-    <style>
+    <style nonce="<?= $nonce; ?>">
         #acquired-payments-card-component {
             display: none;
         }

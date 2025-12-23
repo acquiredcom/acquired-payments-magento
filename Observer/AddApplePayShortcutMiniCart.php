@@ -29,7 +29,7 @@ class AddApplePayShortcutMiniCart implements ObserverInterface
 
     public function execute(Observer $observer)
     {
-        if (!$this->expressHelper->isExpressMethodEnabled('applepay','minicart')) {
+        if (!$this->expressHelper->isExpressMethodEnabled('applepay')) {
             return;
         }
 
@@ -46,6 +46,6 @@ class AddApplePayShortcutMiniCart implements ObserverInterface
 
         $shortcut->setIsCart(get_class($shortcutButtons) === ShortcutButtons::class);
 
-        $shortcutButtons->addShortcut($shortcut);
+        $shortcutButtons->addShortcut($shortcut, 0);
     }
 }

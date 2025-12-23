@@ -1,4 +1,4 @@
-<div id="acquired_payment_applepay_minicart"
+<div id="acquired_payment_applepay_cart"
      data-mage-init='{
          "Acquired_Payments/js/view/payment/method-renderer/apple-pay-minicart": {
             "storeName": "<?= $this->getEscaper()->escapeJs($block->getStoreName()); ?>",
@@ -6,7 +6,7 @@
             "storeCountry": "<?= $this->getEscaper()->escapeJs($block->getStoreCountry()); ?>",
             "storeCurrency": "<?= $this->getEscaper()->escapeJs($block->getStoreCurrency()); ?>",
             "supportedNetworks": <?= json_encode($block->getSupportedNetworks()); ?>,
-            "buttonType": "minicart"
+            "buttonType": "cart"
          }
      }'
      class="acquired-payments-applepay-minicart acquired-payments-hide-button">
