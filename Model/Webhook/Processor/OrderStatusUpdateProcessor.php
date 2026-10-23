@@ -12,7 +12,6 @@
 namespace Acquired\Payments\Model\Webhook\Processor;
 
 
-use Magento\Sales\Model\Order;
 use Acquired\Payments\Controller\Hosted\Context as HostedContext;
 
 /**
@@ -54,7 +53,6 @@ class OrderStatusUpdateProcessor extends AbstractProcessor
             ($webhookBody['status'] === self::STATUS_EXECUTED || $webhookBody['status'] === self::STATUS_SETTLED || $webhookBody['status'] === self::STATUS_SUCCESS)
             && $this->canInvoiceOrder($order)
         ) {
-            $order->setState(Order::STATE_PROCESSING);
             return $this->invoiceOrder($order, $incrementId, $webhookBody['transaction_id']);
         }
 

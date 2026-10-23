@@ -12,6 +12,7 @@
 namespace Acquired\Payments\Model\Webhook\Processor;
 
 use Exception;
+use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Serialize\SerializerInterface;
 use Acquired\Payments\Exception\Webhook\WebhookVersionException;
 use Acquired\Payments\Exception\Webhook\WebhookIntegrityException;
@@ -146,40 +147,7 @@ abstract class AbstractProcessor
      */
     protected function invoiceOrder(OrderInterface $order, string $incrementId, string $transactionId): array
     {
-        if (!$order->canInvoice()) {
-            return $this->createResponse(__('Order #%1 cannot be invoiced.', $incrementId));
-        }
-
-        try {
-
-            /** @var \Magento\Sales\Model\Order\Payment $payment */
-            $payment = $order->getPayment();
-            $payment->setLastTransId($transactionId);
-            $payment->setTransactionId($transactionId);
-            $payment->save();
-
-            $invoice = $this->webhookContext->invoiceService->prepareInvoice($order);
-            $invoice->setRequestedCaptureCase(\Magento\Sales\Model\Order\Invoice::CAPTURE_ONLINE);
-            $invoice->register();
-            $invoice->save();
-
-            $transactionSave =
-                $this->webhookContext->transaction
-                    ->addObject($invoice)
-                    ->addObject($invoice->getOrder())
-                    ->addObject($payment);
-            $transactionSave->save();
-
-            $this->webhookContext->orderSender->send($order);
-            $this->webhookContext->invoiceSender->send($invoice);
-            $order->addCommentToStatusHistory(
-                __('Notified customer about invoice creation #%1.', $invoice->getId())
-            )->setIsCustomerNotified(true)->save();
-
-            return $this->createResponse( __('Order #%1 invoiced successfully.', $incrementId), true);
-        } catch (LocalizedException $e) {
-            return $this->createResponse( __('Error invoicing order #%1: %2', $incrementId, $e->getMessage()));
-        }
+        return $this->webhookContext->invoicePaidOrder->execute((int) $order->getEntityId(), $transactionId);
     }
 
     /**

@@ -12,7 +12,6 @@
 namespace Acquired\Payments\Model\Webhook\Processor;
 
 
-use Magento\Sales\Model\Order;
 use Acquired\Payments\Service\MultishippingService;
 use Acquired\Payments\Controller\Hosted\Context as HostedContext;
 
@@ -109,7 +108,6 @@ class MultishippingStatusUpdateProcessor extends AbstractProcessor
         $messages = [];
 
         foreach ($orders as $order) {
-            $order->setState(Order::STATE_PROCESSING);
             $invoiceResult = $this->invoiceOrder($order, $order->getIncrementId(), $transactionId);
             $success = $success && $invoiceResult['success'];
             $messages[] = $invoiceResult;
