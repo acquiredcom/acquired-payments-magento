@@ -106,16 +106,19 @@ class MultishippingStatusUpdateProcessor extends AbstractProcessor
     public function bulkInvoiceOrders($orders, $transactionId)
     {
         $success = true;
+        $retryable = false;
         $messages = [];
 
         foreach ($orders as $order) {
             $invoiceResult = $this->invoiceOrder($order, $order->getIncrementId(), $transactionId);
             $success = $success && $invoiceResult['success'];
+            $retryable = $retryable || !empty($invoiceResult['retryable']);
             $messages[] = $invoiceResult;
         }
 
         $response = [
             'success' => $success,
+            'retryable' => $retryable,
             'messages' => $messages
         ];
 

@@ -86,7 +86,13 @@ class Index extends Action implements HttpPostActionInterface, CsrfAwareActionIn
 
             $webhookData = $this->serializer->unserialize($requestPayload);
 
-            if (!is_array($webhookData) || !isset($webhookData['webhook_type']) || !is_string($webhookData['webhook_type'])) {
+            if (
+                !is_array($webhookData)
+                || !isset($webhookData['webhook_type'])
+                || !is_string($webhookData['webhook_type'])
+                || !isset($webhookData['webhook_body'])
+                || !is_array($webhookData['webhook_body'])
+            ) {
                 throw new InvalidArgumentException((string) __('Invalid webhook payload.'));
             }
 
@@ -102,12 +108,22 @@ class Index extends Action implements HttpPostActionInterface, CsrfAwareActionIn
             $processor = $this->processorFactory->create($webhookData['webhook_type']);
             $processorResponse = $processor->execute($webhookData, $webhookHash, $webhookVersion);
 
-            $this->setResponseData(
-                $result,
-                true,
-                (string) __('Webhook processed successfully.'),
-                $processorResponse
-            );
+            if (!empty($processorResponse['retryable'])) {
+                $this->setResponseData(
+                    $result,
+                    false,
+                    (string) __('Webhook could not be processed yet, please retry.'),
+                    $processorResponse,
+                    HttpResponse::STATUS_CODE_503
+                );
+            } else {
+                $this->setResponseData(
+                    $result,
+                    true,
+                    (string) __('Webhook processed successfully.'),
+                    $processorResponse
+                );
+            }
 
             $this->logger->debug(
                 __('Webhook %1 process response', $webhookData['webhook_type']),

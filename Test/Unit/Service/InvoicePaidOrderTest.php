@@ -17,6 +17,7 @@ use Acquired\Payments\Service\InvoicePaidOrder;
 use Acquired\Payments\Ui\Method\PayByBankProvider;
 use Magento\Framework\DB\Transaction;
 use Magento\Framework\DB\TransactionFactory;
+use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Lock\LockManagerInterface;
 use Magento\Sales\Model\Order;
 use Magento\Sales\Model\Order\Email\Sender\InvoiceSender;
@@ -87,9 +88,12 @@ class InvoicePaidOrderTest extends TestCase
         $this->payment->expects($this->once())->method('setLastTransId')->with(self::TRANSACTION_ID);
         $this->payment->expects($this->once())->method('setTransactionId')->with(self::TRANSACTION_ID);
 
+        $this->payment->expects($this->never())->method('save');
+
         $invoice = $this->createMock(Invoice::class);
         $invoice->method('getOrder')->willReturn($this->order);
         $invoice->expects($this->once())->method('register');
+        $invoice->expects($this->never())->method('save');
         $this->invoiceService->expects($this->once())->method('prepareInvoice')->with($this->order)->willReturn($invoice);
 
         $transaction = $this->createMock(Transaction::class);
@@ -103,6 +107,22 @@ class InvoicePaidOrderTest extends TestCase
         $result = $this->invoicePaidOrder->execute(self::ORDER_ID, self::TRANSACTION_ID);
 
         $this->assertTrue($result['success']);
+        $this->assertFalse($result['retryable']);
+    }
+
+    public function testInvoicingErrorIsRetryable()
+    {
+        $this->givenLockAcquired();
+        $this->order->method('getState')->willReturn(Order::STATE_PAYMENT_REVIEW);
+        $this->order->method('hasInvoices')->willReturn(false);
+        $this->order->method('canInvoice')->willReturn(true);
+        $this->invoiceService->method('prepareInvoice')
+            ->willThrowException(new LocalizedException(__('Could not prepare invoice')));
+
+        $result = $this->invoicePaidOrder->execute(self::ORDER_ID, self::TRANSACTION_ID);
+
+        $this->assertFalse($result['success']);
+        $this->assertTrue($result['retryable']);
     }
 
     public function testDoesNotInvoiceAlreadyInvoicedOrder()
@@ -116,6 +136,7 @@ class InvoicePaidOrderTest extends TestCase
         $result = $this->invoicePaidOrder->execute(self::ORDER_ID, self::TRANSACTION_ID);
 
         $this->assertFalse($result['success']);
+        $this->assertFalse($result['retryable']);
     }
 
     public function testDoesNotInvoiceOrderNoLongerInPaymentReview()
@@ -141,6 +162,7 @@ class InvoicePaidOrderTest extends TestCase
         $result = $this->invoicePaidOrder->execute(self::ORDER_ID, self::TRANSACTION_ID);
 
         $this->assertFalse($result['success']);
+        $this->assertTrue($result['retryable']);
     }
 
     private function givenLockAcquired(): void

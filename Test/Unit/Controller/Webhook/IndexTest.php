@@ -92,6 +92,33 @@ class IndexTest extends TestCase
         $this->controller->execute();
     }
 
+    public function testPayloadWithoutWebhookBodyReturns400()
+    {
+        $this->givenRequest('{"webhook_type":"status_update"}', '2', 'hash');
+        $this->processorFactory->expects($this->never())->method('create');
+
+        $this->expectStatus(400);
+        $this->controller->execute();
+    }
+
+    public function testRetryableProcessingFailureReturns503()
+    {
+        $this->givenRequest(self::PAYLOAD, '2', 'hash');
+        $this->givenProcessor(null, ['success' => false, 'message' => 'busy', 'retryable' => true]);
+
+        $this->expectStatus(503);
+        $this->controller->execute();
+    }
+
+    public function testNonRetryableResultReturns200()
+    {
+        $this->givenRequest(self::PAYLOAD, '2', 'hash');
+        $this->givenProcessor(null, ['success' => false, 'message' => 'Order #000000007 is not awaiting payment.', 'retryable' => false]);
+
+        $this->expectStatus(200);
+        $this->controller->execute();
+    }
+
     public function testInvalidHashReturns401()
     {
         $this->givenRequest(self::PAYLOAD, '2', 'bad');

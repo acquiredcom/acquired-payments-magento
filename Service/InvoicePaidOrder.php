@@ -63,7 +63,7 @@ class InvoicePaidOrder
     {
         $lockName = self::LOCK_PREFIX . $orderId;
         if (!$this->lockManager->lock($lockName, self::LOCK_TIMEOUT)) {
-            return $this->createResponse(__('Order with ID %1 is being processed by another request.', $orderId));
+            return $this->createResponse(__('Order with ID %1 is being processed by another request.', $orderId), false, true);
         }
 
         try {
@@ -113,13 +113,12 @@ class InvoicePaidOrder
             $payment = $order->getPayment();
             $payment->setLastTransId($transactionId);
             $payment->setTransactionId($transactionId);
-            $payment->save();
 
             $invoice = $this->invoiceService->prepareInvoice($order);
             $invoice->setRequestedCaptureCase(Invoice::CAPTURE_ONLINE);
             $invoice->register();
-            $invoice->save();
 
+            // Persist invoice, order and payment together so a failure cannot leave an invoice on an unpaid order.
             $this->transactionFactory->create()
                 ->addObject($invoice)
                 ->addObject($invoice->getOrder())
@@ -134,17 +133,18 @@ class InvoicePaidOrder
 
             return $this->createResponse(__('Order #%1 invoiced successfully.', $incrementId), true);
         } catch (LocalizedException $e) {
-            return $this->createResponse(__('Error invoicing order #%1: %2', $incrementId, $e->getMessage()));
+            return $this->createResponse(__('Error invoicing order #%1: %2', $incrementId, $e->getMessage()), false, true);
         }
     }
 
     /**
      * @param \Magento\Framework\Phrase|string $message
      * @param bool $success
+     * @param bool $retryable Whether the caller should retry later because the order may still need invoicing.
      * @return array
      */
-    private function createResponse($message, bool $success = false): array
+    private function createResponse($message, bool $success = false, bool $retryable = false): array
     {
-        return ['success' => $success, 'message' => (string) $message];
+        return ['success' => $success, 'message' => (string) $message, 'retryable' => $retryable];
     }
 }
