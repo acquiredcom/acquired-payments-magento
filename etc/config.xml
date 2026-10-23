@@ -42,7 +42,7 @@
                 <title>PayByBank</title>
                 <model>AcquiredHostedCheckoutPaymentMethodFacade</model>
 
-                <redirect_url>acquired/hosted/redirect</redirect_url>
+                <redirect_url>acquired/hosted/response</redirect_url>
                 <webhook_url>acquired/webhook/index</webhook_url>
 
                 <bank_only>0</bank_only>
