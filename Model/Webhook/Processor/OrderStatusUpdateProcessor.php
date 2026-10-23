@@ -13,6 +13,7 @@ namespace Acquired\Payments\Model\Webhook\Processor;
 
 
 use Acquired\Payments\Controller\Hosted\Context as HostedContext;
+use Acquired\Payments\Exception\Webhook\WebhookOrderNotFoundException;
 
 /**
  * @class OrderStatusUpdateProcessor
@@ -42,7 +43,7 @@ class OrderStatusUpdateProcessor extends AbstractProcessor
 
         $order = $this->getOrderByIncrementId($incrementId);
         if (!$order) {
-            return $this->createResponse(__('Order #%1 not found.', $incrementId));
+            throw new WebhookOrderNotFoundException(__('Order #%1 not found.', $incrementId));
         }
 
         if ($webhookBody['status'] === self::STATUS_CANCELED) {

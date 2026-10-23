@@ -31,6 +31,7 @@ use Laminas\Http\Response as HttpResponse;
 use Acquired\Payments\Model\Webhook\ProcessorFactory;
 use Acquired\Payments\Exception\Webhook\WebhookVersionException;
 use Acquired\Payments\Exception\Webhook\WebhookIntegrityException;
+use Acquired\Payments\Exception\Webhook\WebhookOrderNotFoundException;
 
 /**
  * @class Index
@@ -66,6 +67,7 @@ class Index extends Action implements HttpPostActionInterface, CsrfAwareActionIn
      * @return Json|ResultInterfaceAlias|ResponseInterfaceAlias Returns a JSON response with the processing outcome.
      * @throws WebhookVersionException If the webhook version is not supported.
      * @throws WebhookIntegrityException If the integrity check of the webhook data fails.
+     * @throws WebhookOrderNotFoundException If the webhook references an unknown order.
      * @throws InvalidArgumentException If any arguments do not meet the expected criteria.
      * @throws Exception For all other unforeseen errors that may occur during processing.
      */
@@ -74,10 +76,19 @@ class Index extends Action implements HttpPostActionInterface, CsrfAwareActionIn
         $result = $this->resultJsonFactory->create();
 
         try {
-            $requestPayload = $this->getRequest()->getContent();
-            $webhookVersion = $this->getRequest()->getHeader(self::WEBHOOK_VERSION_KEY);
-            $webhookHash = $this->getRequest()->getHeader(self::WEBHOOK_HASH_KEY);
+            $requestPayload = (string) $this->getRequest()->getContent();
+            $webhookVersion = (string) $this->getRequest()->getHeader(self::WEBHOOK_VERSION_KEY);
+            $webhookHash = (string) $this->getRequest()->getHeader(self::WEBHOOK_HASH_KEY);
+
+            if ($webhookVersion === '' || $webhookHash === '') {
+                throw new InvalidArgumentException((string) __('Missing webhook version or hash header.'));
+            }
+
             $webhookData = $this->serializer->unserialize($requestPayload);
+
+            if (!is_array($webhookData) || !isset($webhookData['webhook_type']) || !is_string($webhookData['webhook_type'])) {
+                throw new InvalidArgumentException((string) __('Invalid webhook payload.'));
+            }
 
             $this->logger->debug(
                 __('Webhook %1 action request', $webhookData['webhook_type']),
@@ -104,7 +115,7 @@ class Index extends Action implements HttpPostActionInterface, CsrfAwareActionIn
                     'response' => $this->serializer->serialize($processorResponse)
                 ]
             );
-        } catch (WebhookVersionException | WebhookIntegrityException | InvalidArgumentException $e) {
+        } catch (WebhookVersionException | WebhookIntegrityException | WebhookOrderNotFoundException | InvalidArgumentException $e) {
             $this->logger->critical(__('Webhook process failed: %1', $e->getMessage()), ['exception' => $e]);
             $this->handleException($result, $e);
         } catch (Exception $e) {
@@ -159,6 +170,7 @@ class Index extends Action implements HttpPostActionInterface, CsrfAwareActionIn
         $statusCode = match (true) {
             $exception instanceof WebhookVersionException => HttpResponse::STATUS_CODE_422,
             $exception instanceof WebhookIntegrityException => HttpResponse::STATUS_CODE_401,
+            $exception instanceof WebhookOrderNotFoundException => HttpResponse::STATUS_CODE_404,
             $exception instanceof InvalidArgumentException => HttpResponse::STATUS_CODE_400,
             default => HttpResponse::STATUS_CODE_500,
         };
