@@ -10,10 +10,12 @@ declare(strict_types=1);
  * This file is open source under the MIT license.
  * Please see LICENSE file for more details.
  */
-
+$objectManager =  \Magento\Framework\App\ObjectManager::getInstance();
+$nonceProvider = \Magento\Framework\App\ObjectManager::getInstance()->get(\Magento\Csp\Helper\CspNonceProvider::class);
+$nonce = $nonceProvider->generateNonce();
 ?>
 <?php if ($block->getJsIntegrityHash()) : ?>
-    <script type="text/javascript">
+    <script type="text/javascript" nonce="<?= $nonce; ?>">
         window.ACQUIRED_JS_INTEGRITY_HASH = "<?= $block->escapeJs($block->getJsIntegrityHash()); ?>";
     </script>
 <?php endif; ?>
