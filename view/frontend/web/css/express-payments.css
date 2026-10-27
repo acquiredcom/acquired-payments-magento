@@ -4,6 +4,9 @@
     display:inline-block;
     -webkit-appearance: -apple-pay-button;
 	cursor: pointer;
+    border: 0;
+    padding: 0;
+    box-shadow: none;
 }
 
 .apple-pay-button-with-text>* {

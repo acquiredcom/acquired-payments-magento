@@ -11,5 +11,5 @@
      }'
      class="acquired-payments-applepay-minicart acquired-payments-hide-button">
 
-    <div lang="<?= $block->escapeHtml($block->getButtonLocale()) ?>"  class="<?= $block->escapeHtmlAttr($block->getButtonClasses()) ?>"></div>
+    <button type="button" lang="<?= $block->escapeHtmlAttr($block->getButtonLocale()) ?>" class="<?= $block->escapeHtmlAttr($block->getButtonClasses()) ?>" aria-label="<?= $block->escapeHtmlAttr(__('Buy with Apple Pay')) ?>"></button>
 </div>
