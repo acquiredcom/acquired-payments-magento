@@ -14,30 +14,24 @@ declare(strict_types=1);
 namespace Acquired\Payments\Controller\Applepay;
 
 use Magento\Checkout\Api\Data\ShippingInformationInterface;
-use Magento\Quote\Api\Data\AddressInterfaceFactory;
 use Magento\Framework\App\Action\Action;
 use Magento\Framework\App\Action\Context;
-use Magento\Framework\App\CsrfAwareActionInterface;
-use Magento\Framework\App\RequestInterface;
-use Magento\Framework\App\Request\InvalidRequestException;
+use Magento\Framework\App\Action\HttpPostActionInterface;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Serialize\Serializer\Json as JsonSerializer;
 use Magento\Quote\Api\CartRepositoryInterface;
-use Magento\Quote\Api\CartManagementInterface;
 use Magento\Checkout\Api\ShippingInformationManagementInterface;
 use Magento\Quote\Api\ShippingMethodManagementInterface;
 use Magento\Checkout\Api\Data\ShippingInformationInterfaceFactory;
 use Magento\Quote\Api\Data\AddressInterface;
 
-class Shipping extends Action implements CsrfAwareActionInterface
+class Shipping extends Action implements HttpPostActionInterface
 {
     public function __construct(
         Context $context,
         private JsonFactory $resultJsonFactory,
         private JsonSerializer $json,
         private CartRepositoryInterface $cartRepository,
-        private CartManagementInterface $cartManagement,
-        private AddressInterfaceFactory $addressFactory,
         private ShippingInformationManagementInterface $shippingInfoMgmt,
         private ShippingMethodManagementInterface $shippingMethodMgmt,
         private \Magento\Checkout\Model\Session $checkoutSession,
@@ -120,7 +114,4 @@ class Shipping extends Action implements CsrfAwareActionInterface
         
         $this->shippingInfoMgmt->saveAddressInformation($address->getQuoteId(), $shippingInformation);
     }
-
-    public function createCsrfValidationException(RequestInterface $request): ?InvalidRequestException { return null; }
-    public function validateForCsrf(RequestInterface $request): ?bool { return true; }
 }

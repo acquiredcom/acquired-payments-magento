@@ -15,23 +15,19 @@ namespace Acquired\Payments\Controller\Applepay;
 
 use Magento\Framework\App\Action\Action;
 use Magento\Framework\App\Action\Context;
-use Magento\Framework\App\CsrfAwareActionInterface;
-use Magento\Framework\App\RequestInterface;
-use Magento\Framework\App\Request\InvalidRequestException;
+use Magento\Framework\App\Action\HttpPostActionInterface;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Serialize\Serializer\Json as JsonSerializer;
-use Magento\Checkout\Api\Data\ShippingInformationInterface;
-use Magento\Quote\Api\Data\AddressInterfaceFactory;
+use Psr\Log\LoggerInterface;
 
-class Transaction extends Action implements CsrfAwareActionInterface
+class Transaction extends Action implements HttpPostActionInterface
 {
     public function __construct(
         Context $context,
         private JsonFactory $resultJsonFactory,
         private JsonSerializer $json,
-        private \Magento\Checkout\Model\Session $checkoutSession,
-        private AddressInterfaceFactory $addressFactory,
-        private \Acquired\Payments\Helper\Express $express
+        private \Acquired\Payments\Helper\Express $express,
+        private LoggerInterface $logger
     ) {
         parent::__construct($context);
     }
@@ -46,10 +42,8 @@ class Transaction extends Action implements CsrfAwareActionInterface
             $results = $this->express->placeOrder($params); 
             return $result->setData($results[0] ?? ['error' => true, 'message' => 'Unknown error']);
         } catch (\Throwable $e) {
-            return $result->setData(['error' => true, 'message' => 'Order failed' . $e->getMessage()]);
+            $this->logger->critical($e);
+            return $result->setData(['error' => true, 'message' => 'Order failed. Please try again or proceed to regular checkout.']);
         }
     }
-
-    public function createCsrfValidationException(RequestInterface $request): ?InvalidRequestException { return null; }
-    public function validateForCsrf(RequestInterface $request): ?bool { return true; }
 }

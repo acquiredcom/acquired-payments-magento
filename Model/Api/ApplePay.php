@@ -70,18 +70,6 @@ class ApplePay
     }
 
     /**
-     * Handle shipping methods
-     * @return array
-     */
-    public function shippingMethods()
-    {
-        $requestBody = $this->request->getContent();
-        $params = json_decode($requestBody, true);
-
-        return $this->express->setShippingMethods($params);
-    }
-
-    /**
      * Processes a ApplePay transaction
      *
      * @return void

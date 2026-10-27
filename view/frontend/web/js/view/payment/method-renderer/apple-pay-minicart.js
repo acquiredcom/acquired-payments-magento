@@ -127,11 +127,13 @@ define([
         handleAjaxError: function (message) {
             if (this.session) {
                 try {
-                    this.resetSession();
+                    this.session.abort();
                 } catch (e) {
                     console.error('Error aborting Apple Pay session:', e);
                 }
             }
+
+            this.resetSession();
 
             var customerMessages = customerData.get('messages')() || {},
                 messages = customerMessages.messages || [];
@@ -193,8 +195,11 @@ define([
                 ]
             }
 
+            // Handlers use this local rather than this.session, which oncancel/onabort can null mid-request
+            let session;
             try {
-                this.session = new ApplePaySession(3, request);
+                session = new ApplePaySession(3, request);
+                this.session = session;
             } catch (error) {
                 console.error('Failed to create Apple Pay session:', error);
                 this.handleAjaxError('Unable to start Apple Pay. Please ensure you have a valid payment method.');
@@ -202,7 +207,7 @@ define([
             }
 
             //  onvalidatemerchant
-            this.session.onvalidatemerchant = async function (event) {
+            session.onvalidatemerchant = async function (event) {
                 try {
                     const response = await fetch(url.build('rest/V1/acquired/apple-pay/session'), {
                         method: 'POST',
@@ -218,7 +223,7 @@ define([
 
                     if (result && result.merchant_session_identifier) {
                         try {
-                            this.session.completeMerchantValidation(this.toCamelCase(result));
+                            session.completeMerchantValidation(this.toCamelCase(result));
                         } catch (validationError) {
                             console.error('Merchant validation completion failed:', validationError);
                             this.handleAjaxError('Validation failed. Please try again.');
@@ -233,16 +238,12 @@ define([
             }.bind(this);
 
             // onpaymentmethodselected
-            this.session.onpaymentmethodselected = function () {
-                if (!Array.isArray(this.shippingMethods) || this.shippingMethods.length === 0) {
-                    return;
-                }
-
-                this.session.completePaymentMethodSelection(this.getTotal(), []);
+            session.onpaymentmethodselected = function () {
+                session.completePaymentMethodSelection(this.getTotal(), this.getLineItems());
             }.bind(this);
 
             // onShippingContactSelected
-            this.session.onshippingcontactselected = async function (event) {
+            session.onshippingcontactselected = async function (event) {
                 this.countryCode  = event.shippingContact?.countryCode || null;
                 this.postalCode   = event.shippingContact?.postalCode || null;
                 this.countryState = event.shippingContact?.administrativeArea || null;
@@ -252,7 +253,8 @@ define([
                     const response = await fetch(url.build('acquired/applepay/shipping'), {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json'
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
                         },
                         body: JSON.stringify({
                             shippingAddress: event.shippingContact,
@@ -268,7 +270,7 @@ define([
                     this.quoteTotals = result?.totals || this.quoteTotals;
 
                     if (shippingMethods.length === 0) {
-                        this.session.completeShippingContactSelection({
+                        session.completeShippingContactSelection({
                             status: ApplePaySession.STATUS_FAILURE,
                             newTotal: this.getTotal(),
                             errors: [
@@ -290,7 +292,7 @@ define([
                     this.selectedShippingMethod = shippingMethods[0];
                     this.quoteTotals = result.totals || this.quoteTotals;
 
-                    this.session.completeShippingContactSelection(
+                    session.completeShippingContactSelection(
                         ApplePaySession.STATUS_SUCCESS,
                         this.shippingMethods,
                         this.getTotal(),
@@ -309,7 +311,7 @@ define([
                     );
 
                     try {
-                        this.session.completeShippingContactSelection({
+                        session.completeShippingContactSelection({
                             errors: [genericError],
                             newShippingMethods: [],
                             newTotal: this.getTotal(),
@@ -323,14 +325,15 @@ define([
             }.bind(this);
 
             // onshippingmethodselected
-            this.session.onshippingmethodselected = async function (event) {
+            session.onshippingmethodselected = async function (event) {
                 this.selectedShippingMethod = event.shippingMethod;
 
                 try {
                     const response = await fetch(url.build('acquired/applepay/shipping'), {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json'
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
                         },
                         body: JSON.stringify({
                             shippingMethod: this.selectedShippingMethod,
@@ -344,7 +347,7 @@ define([
                     const result = await response.json();
 
                     if (!result) {
-                        this.session.completeShippingMethodSelection(ApplePaySession.STATUS_FAILURE, this.getTotal(), this.getLineItems());
+                        session.completeShippingMethodSelection(ApplePaySession.STATUS_FAILURE, this.getTotal(), this.getLineItems());
                         var customerMessages = customerData.get('messages')() || {};
                         var messages = customerMessages.messages || [];
                         messages.push({ text: 'Something went wrong, please try again.', type: 'notice' });
@@ -356,13 +359,13 @@ define([
                     }
 
                     this.quoteTotals = result.totals;
-                    this.session.completeShippingMethodSelection(
-                        this.session.STATUS_SUCCESS,
+                    session.completeShippingMethodSelection(
+                        ApplePaySession.STATUS_SUCCESS,
                         this.getTotal(),
                         this.getLineItems()
                     );
                 } catch (error) {
-                    this.session.completeShippingMethodSelection(ApplePaySession.STATUS_FAILURE, this.getTotal(), this.getLineItems());
+                    session.completeShippingMethodSelection(ApplePaySession.STATUS_FAILURE, this.getTotal(), this.getLineItems());
 
                     var customerMessages = customerData.get('messages')() || {};
                     var messages = customerMessages.messages || [];
@@ -375,7 +378,7 @@ define([
             }.bind(this);
 
             // onpaymentauthorized - take payment here
-            this.session.onpaymentauthorized = async function (event) {
+            session.onpaymentauthorized = async function (event) {
 
                 if (!this.shippingMethods || !this.shippingMethods.length ||
                     this.selectedShippingMethod?.identifier === 'unavailable' ||
@@ -387,7 +390,7 @@ define([
                         'Please select a valid shipping address before completing payment.'
                     );
 
-                    this.session.completePayment({
+                    session.completePayment({
                         status: ApplePaySession.STATUS_FAILURE,
                         errors: [paymentError]
                     });
@@ -398,7 +401,8 @@ define([
                     const response = await fetch(url.build('acquired/applepay/transaction'), {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json'
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
                         },
                         body: JSON.stringify({
                             shippingMethod: this.selectedShippingMethod,
@@ -410,19 +414,14 @@ define([
 
                     const result = await response.json();
 
-                    if (!this.session) {
-                        this.session.completePayment(ApplePaySession.STATUS_FAILURE);
-                        this.handleAjaxError('Payment has been cancelled.');
-                        return;
-                    }
-
                     if (result.error) {
-                        this.session.completePayment(ApplePaySession.STATUS_FAILURE);
+                        try { session.completePayment(ApplePaySession.STATUS_FAILURE); } catch (e) {}
                         this.handleAjaxError(result.message || 'Payment failed - please try a different card or address.');
                         return;
                     }
 
-                    this.session.completePayment(ApplePaySession.STATUS_SUCCESS);
+                    // The order exists at this point, so still redirect if the sheet was already dismissed
+                    try { session.completePayment(ApplePaySession.STATUS_SUCCESS); } catch (e) {}
 
                     // Invalidate customer data
                     customerData.invalidate(['cart']);
@@ -435,20 +434,20 @@ define([
                     }, 1000);
 
                 } catch (error) {
-                    try { this.session.completePayment(ApplePaySession.STATUS_FAILURE); } catch (e) {}
+                    try { session.completePayment(ApplePaySession.STATUS_FAILURE); } catch (e) {}
                     this.handleAjaxError('Something went wrong, please try again.');
                 }
             }.bind(this);
 
-            this.session.oncomplete = function () {
+            session.oncomplete = function () {
                 this.resetSession();
             }.bind(this);
 
-            this.session.onabort = function () {
+            session.onabort = function () {
                 this.resetSession();
             }.bind(this);
 
-            this.session.oncancel = function () {
+            session.oncancel = function () {
                 this.resetSession();
 
                 var customerMessages = customerData.get('messages')() || {};
@@ -461,7 +460,7 @@ define([
             }.bind(this);
 
             try {
-                this.session.begin();
+                session.begin();
             } catch (error) {
                 console.error('Failed to begin Apple Pay session:', error);
                 this.handleAjaxError('Unable to start Apple Pay session. Please try again.');

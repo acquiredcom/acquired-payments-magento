@@ -19,7 +19,6 @@ use Magento\Framework\View\Element\Template\Context;
 use Magento\Framework\Escaper;
 use Magento\Checkout\Model\Session;
 use Magento\Framework\Locale\Resolver;
-use Magento\Framework\App\Request\Http;
 use Acquired\Payments\Helper\Express as ExpressHelper;
 
 class CartButton extends MinicartButton implements ShortcutInterface
@@ -31,7 +30,6 @@ class CartButton extends MinicartButton implements ShortcutInterface
      * @param Escaper $escaper
      * @param Session $checkoutSession
      * @param Resolver $localeResolver
-     * @param Http $request
      * @param ExpressHelper $expressHelper
      * @param array $data
      */
@@ -40,11 +38,10 @@ class CartButton extends MinicartButton implements ShortcutInterface
         Escaper $escaper,
         Session $checkoutSession,
         Resolver $localeResolver,
-        Http $request,
         private readonly ExpressHelper $expressHelper,
         array $data = []
     ) {
-        parent::__construct($context, $escaper, $checkoutSession, $localeResolver, $request, $expressHelper, $data);
+        parent::__construct($context, $escaper, $checkoutSession, $localeResolver, $data);
     }
 
     /**
@@ -75,7 +72,7 @@ class CartButton extends MinicartButton implements ShortcutInterface
     protected function _toHtml()
     {
         // Check if Apple Pay is enabled for cart
-        if (!$this->expressHelper->isExpressMethodEnabled('applepay', 'cart')) {
+        if (!$this->expressHelper->isExpressMethodEnabled('applepay')) {
             return '';
         }
 

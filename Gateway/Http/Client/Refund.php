@@ -66,30 +66,28 @@ class Refund implements ClientInterface
                 throw new RequestException(__('Transaction not found.'));
             }
 
-            // update check if 24 hours passed as we do not support refund on orders that are under 24hrs old
-            if (isset($transaction['created']) && $transaction['created'] != '') {
-                $createdTime = strtotime($transaction['created']);
-                $checkTime = time() - (24 * 60 * 60);
+            $createdTime = !empty($transaction['created']) ? strtotime((string)$transaction['created']) : false;
+            $isUnderDayOld = $createdTime !== false && $createdTime >= time() - (24 * 60 * 60);
 
-                if ($createdTime < $checkTime) {
-                    $response = $this->gateway->getTransaction()->refund(
-                        $body['transaction_id'],
-                        $body['reference']
-                    );
-                } else {
-                    // order is not 24hours old, try void instead
-                    if ($body['reference']['amount'] == $body['grand_total']) {
-                        $response = $this->gateway->getTransaction()->void($body['transaction_id']);
+            $response = null;
+            if (!$isUnderDayOld) {
+                $response = $this->gateway->getTransaction()->refund(
+                    $body['transaction_id'],
+                    $body['reference']
+                );
+            }
 
-                        if ($response['status'] === 'declined') {
-                            throw new RequestException(__('Void transaction declined by payment gateway.'));
-                        }
-                    } else {
-                        throw new RequestException(__('We currently cannot process partial refunds. Please try again tomorrow or opt for a full refund instead.'));
+            // Refunds are declined until the transaction settles, so fall back to a void for full amounts
+            if ($response === null || (isset($response['status']) && $response['status'] === 'declined')) {
+                if ($body['reference']['amount'] == $body['grand_total']) {
+                    $response = $this->gateway->getTransaction()->void($body['transaction_id']);
+
+                    if ($response['status'] === 'declined') {
+                        throw new RequestException(__('Void transaction declined by payment gateway.'));
                     }
+                } else {
+                    throw new RequestException(__('We currently cannot process partial refunds. Please try again tomorrow or opt for a full refund instead.'));
                 }
-            } else {
-                throw new RequestException(__('Internal server error. Created date was not set.'));
             }
 
             $this->logger->debug(

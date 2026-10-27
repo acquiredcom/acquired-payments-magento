@@ -69,9 +69,7 @@ class RequestBuilderValidator extends AbstractValidator
         
         $method = strtolower(trim($transaction[TransactionResponseInterface::PAYMENT_METHOD] ?? ''));
         
-        $isApplePay = is_array($method)
-            ? in_array('apple_pay', $method, true)
-            : ($method === 'apple_pay');
+        $isApplePay = $method === 'apple_pay';
         
         $isMoto = isset($transaction['transaction']['moto']) && (int)$transaction['transaction']['moto'] === 1;
         

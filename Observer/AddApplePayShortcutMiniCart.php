@@ -46,6 +46,6 @@ class AddApplePayShortcutMiniCart implements ObserverInterface
 
         $shortcut->setIsCart(get_class($shortcutButtons) === ShortcutButtons::class);
 
-        $shortcutButtons->addShortcut($shortcut, 0);
+        $shortcutButtons->addShortcut($shortcut);
     }
 }

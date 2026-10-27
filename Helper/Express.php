@@ -44,9 +44,8 @@ use Magento\Framework\Event\ManagerInterface;
 use Magento\Sales\Api\InvoiceRepositoryInterface;
 use Magento\Sales\Model\Order\Email\Sender\InvoiceSender;
 use Magento\Directory\Model\RegionFactory;
-use Magento\Quote\Api\Data\AddressInterfaceFactory;
-use Magento\Quote\Model\ShippingAddressManagementInterface;
 use Acquired\Payments\Client\Payment as PaymentClient;
+use Acquired\Payments\Client\Gateway;
 use Acquired\Payments\Gateway\Config\Card\Config as CardConfig;
 use Acquired\Payments\Model\Api\CreateAcquiredCustomer;
 
@@ -82,6 +81,7 @@ class Express
      * @param ScopeConfigInterface $scopeConfig
      * @param InvoiceSender $invoiceSender
      * @param RegionFactory $regionFactory
+     * @param Gateway $gateway
      */
     public function __construct(
         private readonly PaymentClient $paymentClient,
@@ -110,8 +110,7 @@ class Express
         private readonly ScopeConfigInterface $scopeConfig,
         private readonly InvoiceSender $invoiceSender,
         private readonly RegionFactory $regionFactory,
-        private readonly AddressInterfaceFactory $addressFactory,
-        private readonly ShippingAddressManagementInterface $shippingAddressManagement
+        private readonly Gateway $gateway
     ) {}
 
     /**
@@ -170,10 +169,25 @@ class Express
             );
         }
 
+        // Apple Pay doesn't fire onshippingmethodselected when the shopper keeps the pre-selected
+        // method, so the rates may never have been saved on the quote.
+        $shippingAddress->setCollectShippingRates(true)->collectShippingRates();
+        if (!$shippingAddress->getShippingMethod()
+            || !$shippingAddress->getShippingRateByCode($shippingAddress->getShippingMethod())
+        ) {
+            $rates = $shippingAddress->getAllShippingRates();
+            if (empty($rates)) {
+                return [['error' => true, 'message' => 'No shipping methods are available for this address.']];
+            }
+            $shippingAddress->setShippingMethod(reset($rates)->getCode());
+        }
+
         if (!$quote->getCustomerId()) {
             $email = $params['shippingAddress']['emailAddress'] ?? ($params['billingAddress']['emailAddress'] ?? null);
             $quote->setCheckoutMethod(\Magento\Checkout\Model\Type\Onepage::METHOD_GUEST)
                   ->setCustomerEmail($email)
+                  ->setCustomerFirstname($params['billingAddress']['givenName'] ?? null)
+                  ->setCustomerLastname($params['billingAddress']['familyName'] ?? null)
                   ->setCustomerIsGuest(true)
                   ->setCustomerGroupId(\Magento\Customer\Api\Data\GroupInterface::NOT_LOGGED_IN_ID);
         } else {
@@ -184,6 +198,7 @@ class Express
             $quote->reserveOrderId();
         }
 
+        $quote->setTotalsCollectedFlag(false);
         $quote->collectTotals();
         $this->cartRepository->save($quote);
 
@@ -210,18 +225,32 @@ class Express
             ]
         ];
 
+        if ($quote->getCustomerId()) {
+            $acquiredCustomer = $this->createAcquiredCustomer->execute($quote->getCustomerId());
+            if ($acquiredCustomer) {
+                $payload['customer']['customer_id'] = $acquiredCustomer['customer_id'];
+            }
+        }
+
         try {
             $apiResult = $this->paymentClient->process($payload, 'apple_pay');
-            if (!$apiResult || !isset($apiResult['status']) || !in_array($apiResult['status'], ['success','settled','executed'], true)) {
-                return [['error' => true, 'message' => 'Transaction declined. Please try again or proceed to regular checkout.']];
-            }
-
-            $transactionId = $apiResult['transaction_id'] ?? null;
-            $this->doPlaceOrder($transactionId, $quote);
         } catch (\Throwable $e) {
-            // it could be that money is taken and order is not created so here we should force create an order in some state and note
             $this->logger->critical($e);
             return [['error' => true, 'message' => 'Unexpected error during payment. Please try again or proceed to regular checkout.']];
+        }
+
+        if (!$apiResult || !isset($apiResult['status']) || !in_array($apiResult['status'], ['success','settled','executed'], true)) {
+            return [['error' => true, 'message' => 'Transaction declined. Please try again or proceed to regular checkout.']];
+        }
+
+        $transactionId = (string)($apiResult['transaction_id'] ?? '');
+
+        try {
+            $this->doPlaceOrder($transactionId, $quote);
+        } catch (\Throwable $e) {
+            $this->logger->critical($e);
+            $this->voidTransaction($transactionId);
+            return [['error' => true, 'message' => 'Your order could not be created and the payment has been cancelled. Please try again or proceed to regular checkout.']];
         }
 
         return [[ 'url' => $this->url->getUrl('checkout/onepage/success') ]];
@@ -301,6 +330,26 @@ class Express
 
             $quote->setIsActive(false);
             $this->cartRepository->save($quote);
+        }
+    }
+
+    /**
+     * Void a payment that was taken but has no order behind it
+     *
+     * @param string $transactionId
+     * @return void
+     */
+    private function voidTransaction(string $transactionId): void
+    {
+        try {
+            $response = $this->gateway->getTransaction()->void($transactionId);
+            if (($response['status'] ?? '') === 'declined') {
+                $this->logger->critical(__('Apple Pay void declined for orphaned transaction %1', $transactionId));
+            }
+        } catch (\Throwable $e) {
+            $this->logger->critical(
+                __('Apple Pay void failed for orphaned transaction %1: %2', $transactionId, $e->getMessage())
+            );
         }
     }
 
