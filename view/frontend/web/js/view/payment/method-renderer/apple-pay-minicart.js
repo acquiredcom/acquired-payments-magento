@@ -124,16 +124,20 @@ define([
         /**
          * Handle ajax errors
          */
-        handleAjaxError: function (message) {
-            if (this.session) {
+        handleAjaxError: function (message, session) {
+            session = session || this.session;
+
+            if (session) {
                 try {
-                    this.session.abort();
+                    session.abort();
                 } catch (e) {
                     console.error('Error aborting Apple Pay session:', e);
                 }
             }
 
-            this.resetSession();
+            if (session === this.session) {
+                this.resetSession();
+            }
 
             var customerMessages = customerData.get('messages')() || {},
                 messages = customerMessages.messages || [];
@@ -196,7 +200,9 @@ define([
             }
 
             // Handlers use this local rather than this.session, which oncancel/onabort can null mid-request
+            // or a newer session can replace; isCurrent() lets late callbacks from a dismissed sheet bail out.
             let session;
+            const isCurrent = () => this.session === session;
             try {
                 session = new ApplePaySession(3, request);
                 this.session = session;
@@ -221,19 +227,25 @@ define([
 
                     const result = await response.json();
 
+                    if (!isCurrent()) {
+                        return;
+                    }
+
                     if (result && result.merchant_session_identifier) {
                         try {
                             session.completeMerchantValidation(this.toCamelCase(result));
                         } catch (validationError) {
                             console.error('Merchant validation completion failed:', validationError);
-                            this.handleAjaxError('Validation failed. Please try again.');
+                            this.handleAjaxError('Validation failed. Please try again.', session);
                         }
 
                     } else {
-                        this.handleAjaxError('Something went wrong, please try again.');
+                        this.handleAjaxError('Something went wrong, please try again.', session);
                     }
                 } catch (error) {
-                    this.handleAjaxError('Something went wrong, please try again.');
+                    if (isCurrent()) {
+                        this.handleAjaxError('Something went wrong, please try again.', session);
+                    }
                 }
             }.bind(this);
 
@@ -266,6 +278,11 @@ define([
                     });
 
                     const result = await response.json();
+
+                    if (!isCurrent()) {
+                        return;
+                    }
+
                     const shippingMethods = Array.isArray(result.shipping_methods) ? result.shipping_methods : [];
                     this.quoteTotals = result?.totals || this.quoteTotals;
 
@@ -299,6 +316,10 @@ define([
                         this.getLineItems()
                     );
                 } catch (error) {
+                    if (!isCurrent()) {
+                        return;
+                    }
+
                     console.error('Shipping contact selection error:', error);
 
                     this.shippingMethods = [];
@@ -319,7 +340,7 @@ define([
                         });
                     } catch (e) {
                         console.error('Error completing shipping contact selection:', e);
-                        this.handleAjaxError('Something went wrong, please try again.');
+                        this.handleAjaxError('Something went wrong, please try again.', session);
                     }
                 }
             }.bind(this);
@@ -346,6 +367,10 @@ define([
 
                     const result = await response.json();
 
+                    if (!isCurrent()) {
+                        return;
+                    }
+
                     if (!result) {
                         session.completeShippingMethodSelection(ApplePaySession.STATUS_FAILURE, this.getTotal(), this.getLineItems());
                         var customerMessages = customerData.get('messages')() || {};
@@ -365,6 +390,10 @@ define([
                         this.getLineItems()
                     );
                 } catch (error) {
+                    if (!isCurrent()) {
+                        return;
+                    }
+
                     session.completeShippingMethodSelection(ApplePaySession.STATUS_FAILURE, this.getTotal(), this.getLineItems());
 
                     var customerMessages = customerData.get('messages')() || {};
@@ -416,7 +445,7 @@ define([
 
                     if (result.error) {
                         try { session.completePayment(ApplePaySession.STATUS_FAILURE); } catch (e) {}
-                        this.handleAjaxError(result.message || 'Payment failed - please try a different card or address.');
+                        this.handleAjaxError(result.message || 'Payment failed - please try a different card or address.', session);
                         return;
                     }
 
@@ -426,7 +455,9 @@ define([
                     // Invalidate customer data
                     customerData.invalidate(['cart']);
 
-                    this.resetSession();
+                    if (isCurrent()) {
+                        this.resetSession();
+                    }
 
                     // Redirect to the result URL
                     setTimeout(() => {
@@ -435,19 +466,27 @@ define([
 
                 } catch (error) {
                     try { session.completePayment(ApplePaySession.STATUS_FAILURE); } catch (e) {}
-                    this.handleAjaxError('Something went wrong, please try again.');
+                    this.handleAjaxError('Something went wrong, please try again.', session);
                 }
             }.bind(this);
 
             session.oncomplete = function () {
-                this.resetSession();
+                if (isCurrent()) {
+                    this.resetSession();
+                }
             }.bind(this);
 
             session.onabort = function () {
-                this.resetSession();
+                if (isCurrent()) {
+                    this.resetSession();
+                }
             }.bind(this);
 
             session.oncancel = function () {
+                if (!isCurrent()) {
+                    return;
+                }
+
                 this.resetSession();
 
                 var customerMessages = customerData.get('messages')() || {};
@@ -463,7 +502,7 @@ define([
                 session.begin();
             } catch (error) {
                 console.error('Failed to begin Apple Pay session:', error);
-                this.handleAjaxError('Unable to start Apple Pay session. Please try again.');
+                this.handleAjaxError('Unable to start Apple Pay session. Please try again.', session);
                 this.resetSession();
             }
         }
