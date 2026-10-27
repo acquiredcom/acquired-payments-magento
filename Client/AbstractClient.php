@@ -19,6 +19,7 @@ use GuzzleHttp\Exception\RequestException as GuzzleRequestException;
 use Magento\Framework\App\CacheInterface;
 use Magento\Framework\Serialize\SerializerInterface;
 use Acquired\Payments\Gateway\Config\Basic;
+use Acquired\Payments\Model\StoreConfigResolver;
 use Acquired\Payments\Exception\Api\ApiCallException;
 use Acquired\Payments\Exception\Api\AuthorizationException;
 use Acquired\Payments\Exception\Api\InvalidMethodException;
@@ -44,13 +45,15 @@ abstract class AbstractClient
      * @param Basic $basicConfig
      * @param ClientFactory $clientFactory
      * @param LoggerInterface $logger
+     * @param StoreConfigResolver $storeConfigResolver
      */
     public function __construct(
         private readonly CacheInterface $cache,
         private readonly SerializerInterface $serializer,
         private readonly Basic $basicConfig,
         private readonly ClientFactory $clientFactory,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly StoreConfigResolver $storeConfigResolver
     ) {
     }
 
@@ -175,8 +178,15 @@ abstract class AbstractClient
      */
     private function getAuthorizationToken(): string|bool
     {
-        $cacheKey = $this->basicConfig->getMode() ? self::CACHE_KEY . "_live" : self::CACHE_KEY . '_test';
+        $appId = (string) $this->basicConfig->getApiId();
+        $appKey = (string) $this->basicConfig->getApiSecret();
+
+        // scope the token to the store and credentials so websites with different merchant profiles don't share it
+        $cacheKey = ($this->basicConfig->getMode() ? self::CACHE_KEY . '_live' : self::CACHE_KEY . '_test')
+            . '_' . (int) $this->storeConfigResolver->getStoreId()
+            . '_' . hash('sha256', $appId . ':' . $appKey);
         $token = $this->cache->load($cacheKey);
+
         if ($token === false) {
             try {
                 $client = $this->clientFactory->create();
@@ -184,8 +194,8 @@ abstract class AbstractClient
                     $this->getEndpointUrl('login'),
                     [
                         'body' => $this->serializer->serialize([
-                            'app_id' => $this->basicConfig->getApiId(),
-                            'app_key' => $this->basicConfig->getApiSecret()
+                            'app_id' => $appId,
+                            'app_key' => $appKey
                         ])
                     ]
                 )->getBody()?->getContents();

@@ -197,13 +197,13 @@ class AcquiredSession implements SessionInterface
 
     /**
      * @param string $nonce
-     * @param mixed $customData
+     * @param mixed|null $customData
      * @return SessionDataInterface
      * @throws LocalizedException
      * @throws NoSuchEntityException
      * @throws SessionException
      */
-    public function get(string $nonce, array $customData = null): SessionDataInterface
+    public function get(string $nonce, ?array $customData = null): SessionDataInterface
     {
         $quote = $this->getQuote();
 
@@ -232,13 +232,13 @@ class AcquiredSession implements SessionInterface
     /**
      * @param string $nonce
      * @param string $sessionId
-     * @param mixed $customData
+     * @param mixed|null $customData
      * @return SessionDataInterface
      * @throws LocalizedException
      * @throws NoSuchEntityException
      * @throws SessionException
      */
-    public function update(string $nonce, string $sessionId, array $customData = null): SessionDataInterface
+    public function update(string $nonce, string $sessionId, ?array $customData = null): SessionDataInterface
     {
         $quote = $this->getQuote();
 

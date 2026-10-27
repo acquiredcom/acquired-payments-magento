@@ -41,7 +41,7 @@ class Config extends GatewayConfig
     public function __construct(
         ScopeConfigInterface $scopeConfig,
         private readonly StoreConfigResolver $storeConfigResolver,
-        string $methodCode = null,
+        ?string $methodCode = null,
         string $pathPattern = parent::DEFAULT_PATH_PATTERN,
     ) {
         parent::__construct($scopeConfig, $methodCode, $pathPattern);
@@ -55,7 +55,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function isActive(int $storeId = null): bool
+    public function isActive(?int $storeId = null): bool
     {
         return (bool) $this->getValue(self::KEY_ACTIVE, $storeId ?? $this->storeConfigResolver->getStoreId());
     }
@@ -68,7 +68,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function isBankOnly(int $storeId = null): bool
+    public function isBankOnly(?int $storeId = null): bool
     {
         return (bool) $this->getValue(self::KEY_BANK_ONLY, $storeId ?? $this->storeConfigResolver->getStoreId());
     }
@@ -81,7 +81,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function getTitle(int $storeId = null): ?string
+    public function getTitle(?int $storeId = null): ?string
     {
         return $this->getValue(self::KEY_TITLE, $storeId ?? $this->storeConfigResolver->getStoreId());
     }
@@ -94,7 +94,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function getRedirectUrl(int $storeId = null): ?string
+    public function getRedirectUrl(?int $storeId = null): ?string
     {
         return $this->getValue(self::KEY_REDIRECT_URL, $storeId ?? $this->storeConfigResolver->getStoreId());
     }
@@ -107,7 +107,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function getWebhookUrl(int $storeId = null): ?string
+    public function getWebhookUrl(?int $storeId = null): ?string
     {
         return $this->getValue(self::KEY_WEBHOOK_URL, $storeId ?? $this->storeConfigResolver->getStoreId());
     }

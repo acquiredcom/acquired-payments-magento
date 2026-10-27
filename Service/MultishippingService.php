@@ -197,7 +197,7 @@ class MultishippingService
      * @param string|null $transactionId
      * @return array
      */
-    public function reserveOrderIds(Quote $quote, string $sessionId = null, string $transactionId = null): array
+    public function reserveOrderIds(Quote $quote, ?string $sessionId = null, ?string $transactionId = null): array
     {
         $reservedIds = [];
         if ($quote->getIsMultiShipping()) {

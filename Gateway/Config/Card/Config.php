@@ -49,7 +49,7 @@ class Config extends GatewayConfig
     public function __construct(
         ScopeConfigInterface $scopeConfig,
         private readonly StoreConfigResolver $storeConfigResolver,
-        string $methodCode = null,
+        ?string $methodCode = null,
         string $pathPattern = parent::DEFAULT_PATH_PATTERN,
     ) {
         parent::__construct($scopeConfig, $methodCode, $pathPattern);
@@ -63,7 +63,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function isActive(int $storeId = null): bool
+    public function isActive(?int $storeId = null): bool
     {
         return (bool) $this->getValue(self::KEY_ACTIVE, $storeId ?? $this->storeConfigResolver->getStoreId());
     }
@@ -76,7 +76,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function getTitle(int $storeId = null): ?string
+    public function getTitle(?int $storeId = null): ?string
     {
         return $this->getValue(self::KEY_TITLE, $storeId ?? $this->storeConfigResolver->getStoreId());
     }
@@ -89,7 +89,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function getPaymentAction(int $storeId = null): ?string
+    public function getPaymentAction(?int $storeId = null): ?string
     {
         return $this->getValue(self::KEY_PAYMENT_ACTION, $storeId ?? $this->storeConfigResolver->getStoreId());
     }
@@ -102,7 +102,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function isCreateCardEnabled(int $storeId = null): bool
+    public function isCreateCardEnabled(?int $storeId = null): bool
     {
         return (bool) $this->getValue(self::KEY_CREATE_CARD, $storeId ?? $this->storeConfigResolver->getStoreId());
     }
@@ -115,7 +115,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function isTdsActive(int $storeId = null): bool
+    public function isTdsActive(?int $storeId = null): bool
     {
         return (bool) $this->getValue(self::KEY_TDS_ACTIVE, $storeId ?? $this->storeConfigResolver->getStoreId());
     }
@@ -128,7 +128,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function getTdsChallengePreference(int $storeId = null): ?string
+    public function getTdsChallengePreference(?int $storeId = null): ?string
     {
         return $this->getValue(self::KEY_TDS_CHALLENGE_PREFERENCE, $storeId ?? $this->storeConfigResolver->getStoreId());
     }
@@ -141,7 +141,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function getTdsContactUrl(int $storeId = null): ?string
+    public function getTdsContactUrl(?int $storeId = null): ?string
     {
         return $this->getValue(self::KEY_TDS_CONTACT_URL, $storeId ?? $this->storeConfigResolver->getStoreId());
     }
@@ -154,7 +154,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function getStyle(int $storeId = null): ?string
+    public function getStyle(?int $storeId = null): ?string
     {
         return $this->getValue(self::KEY_STYLE, $storeId ?? $this->storeConfigResolver->getStoreId());
     }
@@ -167,7 +167,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function getTdsWindowSize(int $storeId = null): ?string
+    public function getTdsWindowSize(?int $storeId = null): ?string
     {
         $size = $this->getValue(self::KEY_TDS_WINDOW_SIZE, $storeId ?? $this->storeConfigResolver->getStoreId());
 
@@ -182,7 +182,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function isGooglePayEnabled(int $storeId = null): bool
+    public function isGooglePayEnabled(?int $storeId = null): bool
     {
         return (bool) $this->getValue(self::KEY_GOOGLE_PAY_ENABLED, $storeId ?? $this->storeConfigResolver->getStoreId());
     }
@@ -195,7 +195,7 @@ class Config extends GatewayConfig
      * @throws InputException
      * @throws NoSuchEntityException
      */
-    public function isApplePayEnabled(int $storeId = null): bool
+    public function isApplePayEnabled(?int $storeId = null): bool
     {
         return (bool) $this->getValue(self::KEY_APPLE_PAY_ENABLED, $storeId ?? $this->storeConfigResolver->getStoreId());
     }
@@ -207,7 +207,7 @@ class Config extends GatewayConfig
      * @return bool True if capture action is enabled (AUTHORIZE_CAPTURE), otherwise false (AUTHORIZE only).
      * @throws LocalizedException If an unsupported payment action is configured.
      */
-    public function getCaptureAction(int $storeId = null): bool
+    public function getCaptureAction(?int $storeId = null): bool
     {
         $paymentAction = $this->getPaymentAction($storeId);
         if ($paymentAction === MethodInterface::ACTION_AUTHORIZE) {

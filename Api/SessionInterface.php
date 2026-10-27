@@ -22,20 +22,20 @@ interface SessionInterface
      * Create a checkout session with acquired
      *
      * @param string $nonce
-     * @param mixed $customData
+     * @param mixed|null $customData
      * @return SessionDataInterface
      */
-    public function get(string $nonce, array $customData = null): SessionDataInterface;
+    public function get(string $nonce, ?array $customData = null): SessionDataInterface;
 
     /**
      * Update checkout session data
      *
      * @param string $nonce
      * @param string $sessionId
-     * @param mixed $customData
+     * @param mixed|null $customData
      * @return SessionDataInterface
      */
-    public function update(string $nonce, string $sessionId, array $customData = null): SessionDataInterface;
+    public function update(string $nonce, string $sessionId, ?array $customData = null): SessionDataInterface;
 
 
     /**
