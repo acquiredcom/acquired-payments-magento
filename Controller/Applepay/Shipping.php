@@ -24,6 +24,7 @@ use Magento\Checkout\Api\ShippingInformationManagementInterface;
 use Magento\Quote\Api\ShippingMethodManagementInterface;
 use Magento\Checkout\Api\Data\ShippingInformationInterfaceFactory;
 use Magento\Quote\Api\Data\AddressInterface;
+use Magento\Directory\Model\RegionFactory;
 
 class Shipping extends Action implements HttpPostActionInterface
 {
@@ -36,6 +37,7 @@ class Shipping extends Action implements HttpPostActionInterface
         private ShippingMethodManagementInterface $shippingMethodMgmt,
         private \Magento\Checkout\Model\Session $checkoutSession,
         private ShippingInformationInterfaceFactory $shippingInformationFactory,
+        private RegionFactory $regionFactory,
     ) {
         parent::__construct($context);
     }
@@ -61,21 +63,38 @@ class Shipping extends Action implements HttpPostActionInterface
         }
         
         if (!empty($params['countryState'])) {
-            $address->setRegion($params['countryState']);
+            $region = $this->regionFactory->create()->loadByCode($params['countryState'], $address->getCountryId());
+            if ($region->getId()) {
+                $address->setRegionId($region->getId());
+            } else {
+                $address->setRegion($params['countryState']);
+            }
         }
         
         // This is second call from applepay where we actually have shipping method set
         if (!empty($params['shippingMethod']['identifier'])) {
-            $this->updateShippingAddress($address, $params['shippingMethod']['identifier']);
+            $this->updateShippingAddress((int)$quote->getId(), $address, $params['shippingMethod']['identifier']);
         }
 
         $quote->setPaymentMethod('acquired_payments_express');
         $quote->getPayment()->importData(['method' => 'acquired_payments_express']);
         
         $this->cartRepository->save($quote);
-        $quote->collectTotals();
+        $quote->setTotalsCollectedFlag(false)->collectTotals();
         
         $methods = $this->shippingMethodMgmt->getList((int)$quote->getId());
+
+        // Apple Pay preselects the first method and won't call back if the shopper keeps it,
+        // so the totals shown on the sheet must already include it.
+        if (empty($params['shippingMethod']['identifier']) && !empty($methods)) {
+            $first = reset($methods);
+            $this->updateShippingAddress(
+                (int)$quote->getId(),
+                $address,
+                $first->getCarrierCode() . '__SPLIT__' . $first->getMethodCode()
+            );
+            $quote->setTotalsCollectedFlag(false)->collectTotals();
+        }
         $payload = [
             'shipping_methods' => array_map(function ($m) {
                 return [
@@ -98,7 +117,7 @@ class Shipping extends Action implements HttpPostActionInterface
         return $result->setData($payload);
     }
 
-    private function updateShippingAddress(AddressInterface $address, string $identifier)
+    private function updateShippingAddress(int $quoteId, AddressInterface $address, string $identifier)
     {
         $address->setCollectShippingRates(true);
         $address->setShippingMethod(str_replace('__SPLIT__', '_', $identifier));
@@ -112,6 +131,6 @@ class Shipping extends Action implements HttpPostActionInterface
             ],
         ]);
         
-        $this->shippingInfoMgmt->saveAddressInformation($address->getQuoteId(), $shippingInformation);
+        $this->shippingInfoMgmt->saveAddressInformation($quoteId, $shippingInformation);
     }
 }

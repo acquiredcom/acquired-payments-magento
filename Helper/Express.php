@@ -24,6 +24,8 @@ use Magento\Quote\Model\Quote;
 use Magento\Framework\App\State;
 use Magento\Framework\UrlInterface;
 use Magento\Framework\App\RequestInterface;
+use Magento\Framework\Exception\LocalizedException;
+use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Quote\Api\Data\CartInterface;
 use Magento\Quote\Api\GuestCartRepositoryInterface;
 use Magento\Quote\Api\ShippingMethodManagementInterface;
@@ -249,8 +251,14 @@ class Express
             $this->doPlaceOrder($transactionId, $quote);
         } catch (\Throwable $e) {
             $this->logger->critical($e);
-            $this->voidTransaction($transactionId);
-            return [['error' => true, 'message' => 'Your order could not be created and the payment has been cancelled. Please try again or proceed to regular checkout.']];
+            if ($this->voidTransaction($transactionId)) {
+                return [['error' => true, 'message' => 'Your order could not be created and the payment has been cancelled. Please try again or proceed to regular checkout.']];
+            }
+
+            return [['error' => true, 'message' => sprintf(
+                'Your order could not be created and we could not confirm the payment was cancelled. Please do not try again; contact us quoting reference %s.',
+                $quote->getReservedOrderId()
+            )]];
         }
 
         return [[ 'url' => $this->url->getUrl('checkout/onepage/success') ]];
@@ -259,9 +267,12 @@ class Express
     /**
      * Real Place order
      *
+     * Throws only when no order was created, so the caller can safely void the payment.
+     *
      * @param string $transactionId
      * @param CartInterface $quote
      * @return void
+     * @throws LocalizedException
      */
     public function doPlaceOrder(string $transactionId, CartInterface $quote): void
     {
@@ -275,8 +286,18 @@ class Express
 
         $order = $this->quoteManagement->submit($quote);
 
-        if ($order) {
+        if (!$order) {
+            throw new LocalizedException(__('Apple Pay order was not created for quote %1', $quote->getId()));
+        }
 
+        $this->checkoutSession
+            ->setLastQuoteId($quote->getId())
+            ->setLastSuccessQuoteId($quote->getId())
+            ->setLastRealOrderId($order->getIncrementId())
+            ->setLastOrderId($order->getId())
+            ->setLastOrderStatus($order->getStatus());
+
+        try {
             $this->eventManager->dispatch(
                 'checkout_type_onepage_save_order_after',
                 [
@@ -284,13 +305,6 @@ class Express
                     'quote' => $quote
                 ]
             );
-
-            $this->checkoutSession
-                ->setLastQuoteId($quote->getId())
-                ->setLastSuccessQuoteId($quote->getId())
-                ->setLastRealOrderId($order->getIncrementId())
-                ->setLastOrderId($order->getId())
-                ->setLastOrderStatus($order->getStatus());
 
             $this->eventManager->dispatch(
                 'checkout_submit_all_after',
@@ -330,6 +344,12 @@ class Express
 
             $quote->setIsActive(false);
             $this->cartRepository->save($quote);
+        } catch (\Throwable $e) {
+            // The order and payment both exist, so this must not trigger a void
+            $this->logger->critical(
+                __('Apple Pay order %1 created but post-order processing failed: %2', $order->getIncrementId(), $e->getMessage()),
+                ['exception' => $e, 'transaction_id' => $transactionId]
+            );
         }
     }
 
@@ -337,20 +357,26 @@ class Express
      * Void a payment that was taken but has no order behind it
      *
      * @param string $transactionId
-     * @return void
+     * @return bool whether the gateway confirmed the void
      */
-    private function voidTransaction(string $transactionId): void
+    private function voidTransaction(string $transactionId): bool
     {
         try {
             $response = $this->gateway->getTransaction()->void($transactionId);
-            if (($response['status'] ?? '') === 'declined') {
-                $this->logger->critical(__('Apple Pay void declined for orphaned transaction %1', $transactionId));
+            if (($response['status'] ?? '') === 'success') {
+                return true;
             }
+            $this->logger->critical(
+                __('Apple Pay void not confirmed for orphaned transaction %1', $transactionId),
+                ['response' => $response]
+            );
         } catch (\Throwable $e) {
             $this->logger->critical(
                 __('Apple Pay void failed for orphaned transaction %1: %2', $transactionId, $e->getMessage())
             );
         }
+
+        return false;
     }
 
     /**
