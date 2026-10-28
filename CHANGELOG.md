@@ -22,6 +22,7 @@ All notable release changes to this project will be documented in this file.
 - Add CartButton block for Apple Pay cart page integration
 - Fix Apple Pay session start failing when Apple omits optional merchant session fields such as `retries`
 - Fix Apple Pay express doubling per-item shipping rates for configurable products, which caused amount mismatch declines
+- Fix Apple Pay sheet showing doubled per-item shipping rates for configurable products
 - Improve error handling and logging in Express checkout flow
 - Code quality improvements and refactoring
 

@@ -21,7 +21,7 @@ use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Serialize\Serializer\Json as JsonSerializer;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Checkout\Api\ShippingInformationManagementInterface;
-use Magento\Quote\Api\ShippingMethodManagementInterface;
+use Magento\Quote\Api\ShipmentEstimationInterface;
 use Magento\Checkout\Api\Data\ShippingInformationInterfaceFactory;
 use Magento\Quote\Api\Data\AddressInterface;
 use Magento\Directory\Model\RegionFactory;
@@ -34,7 +34,7 @@ class Shipping extends Action implements HttpPostActionInterface
         private JsonSerializer $json,
         private CartRepositoryInterface $cartRepository,
         private ShippingInformationManagementInterface $shippingInfoMgmt,
-        private ShippingMethodManagementInterface $shippingMethodMgmt,
+        private ShipmentEstimationInterface $shipmentEstimation,
         private \Magento\Checkout\Model\Session $checkoutSession,
         private ShippingInformationInterfaceFactory $shippingInformationFactory,
         private RegionFactory $regionFactory,
@@ -82,7 +82,7 @@ class Shipping extends Action implements HttpPostActionInterface
         $this->cartRepository->save($quote);
         $quote->setTotalsCollectedFlag(false)->collectTotals();
         
-        $methods = $this->shippingMethodMgmt->getList((int)$quote->getId());
+        $methods = $this->shipmentEstimation->estimateByExtendedAddress((int)$quote->getId(), $address);
 
         // Apple Pay preselects the first method and won't call back if the shopper keeps it,
         // so the totals shown on the sheet must already include it.
