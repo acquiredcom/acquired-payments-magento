@@ -18,7 +18,7 @@
                     <api_secret backend_model="Magento\Config\Model\Config\Backend\Encrypted"/>
                     <test_api_secret backend_model="Magento\Config\Model\Config\Backend\Encrypted"/>
                     <debug_log>0</debug_log>
-                    <js_integrity_hash>sha384-uEWrid7+SjZbfDvQmobDdKO/2ofqACn5KXS9DKANcM0UfHIq+6X1ItKH+dBqcsaV</js_integrity_hash>
+                    <js_integrity_hash>sha384-bgUUOyfGGHexQhNxBxCYD4CIK0K+Lz75YXJ8wmYrYS9+nso5lyrWIHNPqFOUG/Vd</js_integrity_hash>
                     <customer_phone>0</customer_phone>
                 </configuration>
             </acquired>
@@ -70,7 +70,7 @@
                 <can_refund_partial_per_invoice>1</can_refund_partial_per_invoice>
                 <can_void>1</can_void>
                 <can_cancel>1</can_cancel>
-                <can_use_internal>1</can_use_internal>
+                <can_use_internal>0</can_use_internal>
                 <can_use_checkout>1</can_use_checkout>
                 <can_save_cc>0</can_save_cc>
             </acquired_payments_express>

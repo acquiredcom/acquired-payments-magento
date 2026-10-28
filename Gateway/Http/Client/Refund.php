@@ -60,23 +60,25 @@ class Refund implements ClientInterface
             }
 
             // check if transaction exists
-
             $transaction = $this->gateway->getTransaction()->get($body['transaction_id']);
 
             if (!isset($transaction['transaction_id'])) {
                 throw new RequestException(__('Transaction not found.'));
             }
 
-            $response = $this->gateway->getTransaction()->refund(
-                $body['transaction_id'],
-                $body['reference']
-            );
+            $createdTime = !empty($transaction['created']) ? strtotime((string)$transaction['created']) : false;
+            $isUnderDayOld = $createdTime !== false && $createdTime >= time() - (24 * 60 * 60);
 
-            /*
-             * check if refund is declined for whatever reason, possibly 24 hours has not passed
-             * if yes, try to void it if full amount is requested
-             */
-            if (isset($response['status']) && $response['status'] === 'declined') {
+            $response = null;
+            if (!$isUnderDayOld) {
+                $response = $this->gateway->getTransaction()->refund(
+                    $body['transaction_id'],
+                    $body['reference']
+                );
+            }
+
+            // Refunds are declined until the transaction settles, so fall back to a void for full amounts
+            if ($response === null || (isset($response['status']) && $response['status'] === 'declined')) {
                 if ($body['reference']['amount'] == $body['grand_total']) {
                     $response = $this->gateway->getTransaction()->void($body['transaction_id']);
 

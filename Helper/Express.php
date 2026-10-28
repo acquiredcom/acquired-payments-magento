@@ -24,6 +24,8 @@ use Magento\Quote\Model\Quote;
 use Magento\Framework\App\State;
 use Magento\Framework\UrlInterface;
 use Magento\Framework\App\RequestInterface;
+use Magento\Framework\Exception\LocalizedException;
+use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Quote\Api\Data\CartInterface;
 use Magento\Quote\Api\GuestCartRepositoryInterface;
 use Magento\Quote\Api\ShippingMethodManagementInterface;
@@ -39,15 +41,13 @@ use Magento\Customer\Model\Session as CustomerSession;
 use Magento\Framework\Pricing\PriceCurrencyInterface;
 use Magento\Sales\Model\Service\InvoiceService;
 use Magento\Quote\Model\QuoteManagement;
-use Magento\Sales\Model\Order\Invoice;
 use Magento\Sales\Api\OrderRepositoryInterface;
 use Magento\Framework\Event\ManagerInterface;
 use Magento\Sales\Api\InvoiceRepositoryInterface;
 use Magento\Sales\Model\Order\Email\Sender\InvoiceSender;
 use Magento\Directory\Model\RegionFactory;
 use Acquired\Payments\Client\Payment as PaymentClient;
-use Acquired\Payments\Api\Data\ApplePaySessionDataInterface;
-use Acquired\Payments\Model\Api\ApplePaySession;
+use Acquired\Payments\Client\Gateway;
 use Acquired\Payments\Gateway\Config\Card\Config as CardConfig;
 use Acquired\Payments\Model\Api\CreateAcquiredCustomer;
 
@@ -55,7 +55,6 @@ class Express
 {
     const CONFIG_EXPRESS_ACTIVE = 'payment/acquired_express_payments/active';
     const CONFIG_EXPRESS_APPLEPAY_ACTIVE = 'payment/acquired_express_payments/applepay_active';
-    const CONFIG_EXPRESS_LOCATIONS = 'payment/acquired_express_payments/locations';
 
     /**
      * @param PaymentClient $paymentClient
@@ -84,6 +83,7 @@ class Express
      * @param ScopeConfigInterface $scopeConfig
      * @param InvoiceSender $invoiceSender
      * @param RegionFactory $regionFactory
+     * @param Gateway $gateway
      */
     public function __construct(
         private readonly PaymentClient $paymentClient,
@@ -111,125 +111,38 @@ class Express
         private readonly StoreManagerInterface $storeManager,
         private readonly ScopeConfigInterface $scopeConfig,
         private readonly InvoiceSender $invoiceSender,
-        private readonly RegionFactory $regionFactory
+        private readonly RegionFactory $regionFactory,
+        private readonly Gateway $gateway
     ) {}
 
     /**
-     * Check if the payment method on specific location is active for the current store
+     * Check if the payment method is active for the current store
      *
      * @param int|null $storeId
      * @return bool
      */
-    public function isExpressMethodEnabled($method = '', $location = '')
+    public function isExpressMethodEnabled(string $method = ''): bool
     {
-        if (empty($method) || empty($location)) {
+        if ($method === '') {
             return false;
         }
 
         $storeId = $this->storeManager->getStore()->getId();
-        $isMethodActive = false;
-        $isActive = (bool)$this->scopeConfig->getValue(self::CONFIG_EXPRESS_ACTIVE, ScopeInterface::SCOPE_STORE, $storeId);
-        $locations = explode(',', (string)$this->scopeConfig->getValue(self::CONFIG_EXPRESS_LOCATIONS, ScopeInterface::SCOPE_STORE, $storeId));
 
-        if ($method == 'applepay') {
-            $isMethodActive = (bool)$this->scopeConfig->getValue(self::CONFIG_EXPRESS_APPLEPAY_ACTIVE, ScopeInterface::SCOPE_STORE, $storeId);
+        if (!(bool)$this->scopeConfig->getValue(self::CONFIG_EXPRESS_ACTIVE, ScopeInterface::SCOPE_STORE, $storeId)) {
+            return false;
         }
 
-        if ($isActive && $isMethodActive && in_array($location, $locations)) {
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * Set shipping methods
-     * @param array $params
-     * @return array
-     */
-    public function setShippingMethods(array $params)
-    {
-        $quote = $this->getCart();
-
-        $address = $quote->getShippingAddress();
-        $address->setData(null);
-        $address->setCountryId($params['countryCode']);
-        $address->setPostcode($params['postalCode']);
-
-        if (!empty($params['countryState'])) {
-            $regionId = $this->getRegionIdByCode($params['countryCode'], $params['countryState']);
-            if ($regionId) {
-                $address->setRegionId($regionId);
-            }
-        }
-
-        if (!empty($params['shippingMethod'])) {
-            $shippingMethod = explode('__SPLIT__', $params['shippingMethod']['identifier']);
-
-            $address->setCollectShippingRates(true);
-            $address->setShippingMethod($shippingMethod[0] . $shippingMethod[1]);
-
-            $shippingInformation = $this->shippingInformationFactory->create([
-                'data' => [
-                    ShippingInformationInterface::SHIPPING_ADDRESS => $address,
-                    ShippingInformationInterface::SHIPPING_CARRIER_CODE => $shippingMethod[0],
-                    ShippingInformationInterface::SHIPPING_METHOD_CODE => $shippingMethod[1],
-                ],
-            ]);
-
-            $this->shippingInformationManagement->saveAddressInformation($address->getQuoteId(), $shippingInformation);
-        }
-
-        // Weird bug on older devices ios 15 where onshippingmethodselected was never executed until you actually select the shipping method
-        // so we are forcing the first method here if its not selected already
-        if (!$address->getShippingMethod()) {
-            $methods = $this->shippingMethodManagement->getList($quote->getId());
-
-            foreach ($methods as $method) {
-                $address->setCollectShippingRates(true);
-                $address->setShippingMethod($method->getCarrierCode() . $method->getMethodCode());
-
-                $shippingInformation = $this->shippingInformationFactory->create([
-                    'data' => [
-                        ShippingInformationInterface::SHIPPING_ADDRESS => $address,
-                        ShippingInformationInterface::SHIPPING_CARRIER_CODE => $method->getCarrierCode(),
-                        ShippingInformationInterface::SHIPPING_METHOD_CODE => $method->getMethodCode(),
-                    ],
-                ]);
-
-                $this->shippingInformationManagement->saveAddressInformation($address->getQuoteId(), $shippingInformation);
-                break;
-            }
-        }
-
-        $quote->setPaymentMethod('acquired_payments_express');
-        $quote->getPayment()->importData(['method' => 'acquired_payments_express']);
-        $this->cartRepository->save($quote);
-        $quote->collectTotals();
-
-        $methods = $this->shippingMethodManagement->getList($quote->getId());
-
-        $data = [
-            'shipping_methods' => !empty($methods) ? array_map(function ($method) {
-                return [
-                    'identifier' => $method->getCarrierCode() . '__SPLIT__' . $method->getMethodCode(),
-                    'label' => $method->getMethodTitle() . ' - ' . $method->getCarrierTitle(),
-                    'amount' => number_format($method->getPriceInclTax() ?: 0.0, 2, '.', ''),
-                    'detail' => '',
-                ];
-            }, $methods) : [],
-
-            'totals' => !empty($quote->getTotals()) ? array_map(function (AddressTotal $total) {
-                return [
-                    'type' => 'final',
-                    'code' => $total->getCode(),
-                    'label' => $total->getData('title'),
-                    'amount' => number_format($total->getData('value') ?: 0.0, 2, '.', ''),
-                ];
-            }, array_values($quote->getTotals())) : []
+        // We are doing map here so later we can add the rest of express payments
+        $methodConfigMap = [
+            'applepay' => self::CONFIG_EXPRESS_APPLEPAY_ACTIVE,
         ];
 
-        return [$data];
+        if (!isset($methodConfigMap[$method])) {
+            return false;
+        }
+
+        return (bool)$this->scopeConfig->getValue($methodConfigMap[$method], ScopeInterface::SCOPE_STORE, $storeId);
     }
 
     /**
@@ -238,11 +151,53 @@ class Express
      */
     public function placeOrder(array $params)
     {
-        $applePayToken = json_encode($params['applePayPaymentToken']['paymentData']);
-        $quote = $this->getCart();
+        $quote = $this->checkoutSession->getQuote();
 
-        $this->updateAddress($quote->getShippingAddress(), $params['shippingAddress'], $params['shippingAddress']['phoneNumber']);
+        if (!$quote || !$quote->getId()) {
+            return [['error' => true, 'message' => 'No active quote']];
+        }
+
+        $shippingAddress = $quote->getShippingAddress();
+        $this->updateAddress($shippingAddress, $params['shippingAddress'], $params['shippingAddress']['phoneNumber']);
         $this->updateAddress($quote->getBillingAddress(), $params['billingAddress'], $params['shippingAddress']['phoneNumber']);
+
+        if (!empty($params['shippingMethod']['identifier'])) {
+            $shippingAddress->setShippingMethod(
+                str_replace(
+                    '__SPLIT__',
+                    '_',
+                    $params['shippingMethod']['identifier']
+                )
+            );
+        }
+
+        // Apple Pay doesn't fire onshippingmethodselected when the shopper keeps the pre-selected
+        // method, so the rates may never have been saved on the quote. Rates are collected through
+        // collectTotals so the address item qty is set first; calling collectShippingRates directly
+        // counts configurable parent and child items twice and doubles per-item rates.
+        $shippingAddress->setCollectShippingRates(true);
+        $quote->setTotalsCollectedFlag(false)->collectTotals();
+        if (!$shippingAddress->getShippingMethod()
+            || !$shippingAddress->getShippingRateByCode($shippingAddress->getShippingMethod())
+        ) {
+            $rates = $shippingAddress->getAllShippingRates();
+            if (empty($rates)) {
+                return [['error' => true, 'message' => 'No shipping methods are available for this address.']];
+            }
+            $shippingAddress->setShippingMethod(reset($rates)->getCode());
+        }
+
+        if (!$quote->getCustomerId()) {
+            $email = $params['shippingAddress']['emailAddress'] ?? ($params['billingAddress']['emailAddress'] ?? null);
+            $quote->setCheckoutMethod(\Magento\Checkout\Model\Type\Onepage::METHOD_GUEST)
+                  ->setCustomerEmail($email)
+                  ->setCustomerFirstname($params['billingAddress']['givenName'] ?? null)
+                  ->setCustomerLastname($params['billingAddress']['familyName'] ?? null)
+                  ->setCustomerIsGuest(true)
+                  ->setCustomerGroupId(\Magento\Customer\Api\Data\GroupInterface::NOT_LOGGED_IN_ID);
+        } else {
+            $quote->setCheckoutMethod(\Magento\Checkout\Model\Type\Onepage::METHOD_CUSTOMER);
+        }
 
         if (!$quote->getReservedOrderId()) {
             $quote->reserveOrderId();
@@ -250,38 +205,33 @@ class Express
 
         $quote->setTotalsCollectedFlag(false);
         $quote->collectTotals();
+        $this->cartRepository->save($quote);
 
-        if (!$this->customerSession->isLoggedIn()) {
-            $quote->setCheckoutMethod(\Magento\Checkout\Model\Type\Onepage::METHOD_GUEST)
-                ->setCustomerId(null)
-                ->setCustomerEmail($params['shippingAddress']['emailAddress'])
-                ->setCustomerFirstname($params['billingAddress']['familyName'])
-                ->setCustomerLastname($params['billingAddress']['givenName'])
-                ->setCustomerIsGuest(true)
-                ->setCustomerGroupId(\Magento\Customer\Api\Data\GroupInterface::NOT_LOGGED_IN_ID);
-        } else {
-            $quote->setCheckoutMethod(\Magento\Checkout\Model\Type\Onepage::METHOD_CUSTOMER);
-            $quote->setCustomerId($this->customerSession->getCustomerId());
-        }
+        $applePayToken = json_encode($params['applePayPaymentToken']['paymentData']);
+
+        // It can happen that sometimes , is passed as amount
+        $amount = (string)$this->priceCurrency->roundPrice($quote->getGrandTotal());
+        $amount = preg_replace('/\s+/', '', $amount);
+        $amount = preg_replace('/[^0-9.]/', '', $amount);
 
         $payload = [
             'transaction' => [
                 'order_id' => $quote->getReservedOrderId(),
-                'amount' => $this->priceCurrency->roundPrice($quote->getGrandTotal()),
+                'amount'   => $amount,
                 'currency' => strtolower($quote->getCurrency()->getStoreCurrencyCode()),
-                'capture' => $this->cardConfig->getCaptureAction()
+                'capture'  => $this->cardConfig->getCaptureAction()
             ],
             'payment' => [
-                'token' => base64_encode($applePayToken),
-                'scheme' => strtolower($params['applePayPaymentToken']['paymentMethod']['network']),
-                'type' => strtolower($params['applePayPaymentToken']['paymentMethod']['type']),
-                'display_name' => $params['applePayPaymentToken']['paymentMethod']['displayName'],
-                'create_card' => false
+                'token'        => base64_encode($applePayToken),
+                'scheme'       => strtolower($params['applePayPaymentToken']['paymentMethod']['network'] ?? ''),
+                'type'         => strtolower($params['applePayPaymentToken']['paymentMethod']['type'] ?? ''),
+                'display_name' => $params['applePayPaymentToken']['paymentMethod']['displayName'] ?? '',
+                'create_card'  => false
             ]
         ];
 
-        if ($this->customerSession->isLoggedIn()) {
-            $acquiredCustomer = $this->createAcquiredCustomer->execute($this->customerSession->getCustomerId());
+        if ($quote->getCustomerId()) {
+            $acquiredCustomer = $this->createAcquiredCustomer->execute($quote->getCustomerId());
             if ($acquiredCustomer) {
                 $payload['customer']['customer_id'] = $acquiredCustomer['customer_id'];
             }
@@ -289,36 +239,43 @@ class Express
 
         try {
             $apiResult = $this->paymentClient->process($payload, 'apple_pay');
-
-            if ($apiResult && isset($apiResult['status']) && in_array($apiResult['status'], ['success', 'settled', 'executed'])) {
-                $this->doPlaceOrder($apiResult['transaction_id'], $quote);
-            } else {
-                return [
-                    [
-                        'error' => true,
-                        'message' => 'Order could not be placed. Transaction is declined.'
-                    ]
-                ];
-            }
-        } catch (\Magento\Framework\Exception\LocalizedException $e) {
-            $this->logger->error(__('Error creating order: %1', $e->getMessage()));
-        } catch (\Exception $e) {
-            $this->logger->critical(__('Unexpected error: %1', $e->getMessage()));
+        } catch (\Throwable $e) {
+            $this->logger->critical($e);
+            return [['error' => true, 'message' => 'Unexpected error during payment. Please try again or proceed to regular checkout.']];
         }
 
-        return [
-            [
-                'url' => $this->url->getUrl('checkout/onepage/success')
-            ]
-        ];
+        if (!$apiResult || !isset($apiResult['status']) || !in_array($apiResult['status'], ['success','settled','executed'], true)) {
+            return [['error' => true, 'message' => 'Transaction declined. Please try again or proceed to regular checkout.']];
+        }
+
+        $transactionId = (string)($apiResult['transaction_id'] ?? '');
+
+        try {
+            $this->doPlaceOrder($transactionId, $quote);
+        } catch (\Throwable $e) {
+            $this->logger->critical($e);
+            if ($this->voidTransaction($transactionId)) {
+                return [['error' => true, 'message' => 'Your order could not be created and the payment has been cancelled. Please try again or proceed to regular checkout.']];
+            }
+
+            return [['error' => true, 'message' => sprintf(
+                'Your order could not be created and we could not confirm the payment was cancelled. Please do not try again; contact us quoting reference %s.',
+                $quote->getReservedOrderId()
+            )]];
+        }
+
+        return [[ 'url' => $this->url->getUrl('checkout/onepage/success') ]];
     }
 
     /**
      * Real Place order
      *
+     * Throws only when no order was created, so the caller can safely void the payment.
+     *
      * @param string $transactionId
      * @param CartInterface $quote
      * @return void
+     * @throws LocalizedException
      */
     public function doPlaceOrder(string $transactionId, CartInterface $quote): void
     {
@@ -332,8 +289,18 @@ class Express
 
         $order = $this->quoteManagement->submit($quote);
 
-        if ($order) {
+        if (!$order) {
+            throw new LocalizedException(__('Apple Pay order was not created for quote %1', $quote->getId()));
+        }
 
+        $this->checkoutSession
+            ->setLastQuoteId($quote->getId())
+            ->setLastSuccessQuoteId($quote->getId())
+            ->setLastRealOrderId($order->getIncrementId())
+            ->setLastOrderId($order->getId())
+            ->setLastOrderStatus($order->getStatus());
+
+        try {
             $this->eventManager->dispatch(
                 'checkout_type_onepage_save_order_after',
                 [
@@ -341,13 +308,6 @@ class Express
                     'quote' => $quote
                 ]
             );
-
-            $this->checkoutSession
-                ->setLastQuoteId($quote->getId())
-                ->setLastSuccessQuoteId($quote->getId())
-                ->setLastRealOrderId($order->getIncrementId())
-                ->setLastOrderId($order->getId())
-                ->setLastOrderStatus($order->getStatus());
 
             $this->eventManager->dispatch(
                 'checkout_submit_all_after',
@@ -384,7 +344,42 @@ class Express
                 $this->orderRepository->save($order);
                 $this->invoiceSender->send($invoice);
             }
+
+            $quote->setIsActive(false);
+            $this->cartRepository->save($quote);
+        } catch (\Throwable $e) {
+            // The order and payment both exist, so this must not trigger a void
+            $this->logger->critical(
+                __('Apple Pay order %1 created but post-order processing failed: %2', $order->getIncrementId(), $e->getMessage()),
+                ['exception' => $e, 'transaction_id' => $transactionId]
+            );
         }
+    }
+
+    /**
+     * Void a payment that was taken but has no order behind it
+     *
+     * @param string $transactionId
+     * @return bool whether the gateway confirmed the void
+     */
+    private function voidTransaction(string $transactionId): bool
+    {
+        try {
+            $response = $this->gateway->getTransaction()->void($transactionId);
+            if (($response['status'] ?? '') === 'success') {
+                return true;
+            }
+            $this->logger->critical(
+                __('Apple Pay void not confirmed for orphaned transaction %1', $transactionId),
+                ['response' => $response]
+            );
+        } catch (\Throwable $e) {
+            $this->logger->critical(
+                __('Apple Pay void failed for orphaned transaction %1: %2', $transactionId, $e->getMessage())
+            );
+        }
+
+        return false;
     }
 
     /**

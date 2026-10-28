@@ -5,10 +5,11 @@
             "grandTotalAmount": "<?= $this->getEscaper()->escapeJs($block->getBaseGrandTotal()); ?>",
             "storeCountry": "<?= $this->getEscaper()->escapeJs($block->getStoreCountry()); ?>",
             "storeCurrency": "<?= $this->getEscaper()->escapeJs($block->getStoreCurrency()); ?>",
-            "supportedNetworks": <?= json_encode($block->getSupportedNetworks()); ?>
+            "supportedNetworks": <?= json_encode($block->getSupportedNetworks()); ?>,
+            "buttonType": "minicart"
          }
      }'
      class="acquired-payments-applepay-minicart acquired-payments-hide-button">
 
-    <div lang="<?= $block->escapeHtml($block->getButtonLocale()) ?>"  class="<?= $block->escapeHtmlAttr($block->getButtonClasses()) ?>"></div>
+    <button type="button" lang="<?= $block->escapeHtmlAttr($block->getButtonLocale()) ?>" class="<?= $block->escapeHtmlAttr($block->getButtonClasses()) ?>" aria-label="<?= $block->escapeHtmlAttr(__('Buy with Apple Pay')) ?>"></button>
 </div>

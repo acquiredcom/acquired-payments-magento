@@ -10,10 +10,15 @@ declare(strict_types=1);
  * This file is open source under the MIT license.
  * Please see LICENSE file for more details.
  */
-
+// CspNonceProvider only exists from Magento 2.4.7
+$nonce = class_exists(\Magento\Csp\Helper\CspNonceProvider::class)
+    ? \Magento\Framework\App\ObjectManager::getInstance()
+        ->get(\Magento\Csp\Helper\CspNonceProvider::class)
+        ->generateNonce()
+    : '';
 ?>
 <?php if ($block->getJsIntegrityHash()) : ?>
-    <script type="text/javascript">
+    <script type="text/javascript" nonce="<?= $block->escapeHtmlAttr($nonce) ?>">
         window.ACQUIRED_JS_INTEGRITY_HASH = "<?= $block->escapeJs($block->getJsIntegrityHash()); ?>";
     </script>
 <?php endif; ?>

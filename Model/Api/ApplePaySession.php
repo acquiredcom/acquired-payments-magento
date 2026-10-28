@@ -19,59 +19,59 @@ class ApplePaySession implements ApplePaySessionDataInterface
 {
 
     /**
-     * @var string
+     * @var string|null
      */
-    private string $displayName;
+    private ?string $displayName = null;
 
     /**
-     * @var string
+     * @var string|null
      */
-    private string $domainName;
+    private ?string $domainName = null;
 
     /**
-     * @var int
+     * @var int|null
      */
-    private int $epochTimestamp;
+    private ?int $epochTimestamp = null;
 
     /**
-     * @var int
+     * @var int|null
      */
-    private int $expiresAt;
+    private ?int $expiresAt = null;
 
     /**
-     * @var string
+     * @var string|null
      */
-    private string $merchantIdentifier;
+    private ?string $merchantIdentifier = null;
 
     /**
-     * @var string
+     * @var string|null
      */
-    private string $merchantSessionIdentifier;
+    private ?string $merchantSessionIdentifier = null;
 
     /**
-     * @var string
+     * @var string|null
      */
-    private string $nonce;
+    private ?string $nonce = null;
 
     /**
-     * @var string
+     * @var string|null
      */
-    private string $operationalAnalyticsIdentifier;
+    private ?string $operationalAnalyticsIdentifier = null;
 
     /**
-     * @var string
+     * @var string|null
      */
-    private string $pspId;
+    private ?string $pspId = null;
 
     /**
-     * @var int
+     * @var int|null
      */
-    private int $retries;
+    private ?int $retries = null;
 
     /**
-     * @var string
+     * @var string|null
      */
-    private string $signature;
+    private ?string $signature = null;
 
     public function __construct(array $data) {
         $this->displayName = $data['displayName'] ?? null;
