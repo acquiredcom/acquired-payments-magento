@@ -12,6 +12,7 @@
 namespace Acquired\Payments\Model\Webhook\Processor;
 
 use Exception;
+use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Serialize\SerializerInterface;
 use Acquired\Payments\Exception\Webhook\WebhookVersionException;
 use Acquired\Payments\Exception\Webhook\WebhookIntegrityException;
@@ -191,6 +192,16 @@ abstract class AbstractProcessor
      */
     protected function cancelOrder(OrderInterface $order, string $incrementId): array
     {
+        // Magento's cancel() refuses orders in payment review, which is where unpaid orders wait
+        if ($order->getState() === Order::STATE_PAYMENT_REVIEW) {
+            try {
+                $this->webhookContext->cancelOrderPayment->execute($order, (string)__('Payment cancelled at Acquired.'));
+                return $this->createResponse(__('Order #%1 cancelled successfully.', $incrementId), true);
+            } catch (LocalizedException $e) {
+                return $this->createResponse(__('Error cancelling order #%1: %2', $incrementId, $e->getMessage()));
+            }
+        }
+
         if (!$order->canCancel()) {
             return $this->createResponse(__('Order #%1 cannot be cancelled.', $incrementId));
         }

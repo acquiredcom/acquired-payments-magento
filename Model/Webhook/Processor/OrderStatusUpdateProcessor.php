@@ -12,8 +12,12 @@
 namespace Acquired\Payments\Model\Webhook\Processor;
 
 
+use Magento\Framework\Exception\LocalizedException;
+use Magento\Sales\Api\Data\OrderInterface;
 use Magento\Sales\Model\Order;
 use Acquired\Payments\Controller\Hosted\Context as HostedContext;
+use Acquired\Payments\Exception\Payment\PaymentVerificationException;
+use Acquired\Payments\Observer\AcquiredCardDataAssignObserver;
 
 /**
  * @class OrderStatusUpdateProcessor
@@ -50,6 +54,10 @@ class OrderStatusUpdateProcessor extends AbstractProcessor
             return $this->cancelOrder($order, $incrementId);
         }
 
+        if ($order->getPayment()->getAdditionalInformation(AcquiredCardDataAssignObserver::ORDER_FIRST)) {
+            return $this->processOrderFirstPayment($order, $incrementId, $webhookBody);
+        }
+
         if (
             ($webhookBody['status'] === self::STATUS_EXECUTED || $webhookBody['status'] === self::STATUS_SETTLED || $webhookBody['status'] === self::STATUS_SUCCESS)
             && $this->canInvoiceOrder($order)
@@ -59,5 +67,51 @@ class OrderStatusUpdateProcessor extends AbstractProcessor
         }
 
         return $this->createResponse(__('No action required for order #%1.', $incrementId));
+    }
+
+    /**
+     * Finishes card and Apple Pay express orders whose shopper never returned from paying
+     *
+     * @param OrderInterface $order
+     * @param string $incrementId
+     * @param array $webhookBody
+     * @return array
+     */
+    private function processOrderFirstPayment(OrderInterface $order, string $incrementId, array $webhookBody): array
+    {
+        $paid = in_array(
+            $webhookBody['status'],
+            [self::STATUS_SUCCESS, self::STATUS_SETTLED, self::STATUS_EXECUTED],
+            true
+        );
+        $transactionId = (string)($webhookBody['transaction_id'] ?? '');
+
+        if (!$paid || $transactionId === '') {
+            return $this->createResponse(__('No action required for order #%1.', $incrementId));
+        }
+
+        try {
+            if ($order->getState() === Order::STATE_CANCELED) {
+                $this->webhookContext->cancelOrderPayment->releasePayment($order, $transactionId);
+                return $this->createResponse(__('Payment for cancelled order #%1 released.', $incrementId), true);
+            }
+
+            if ($order->getState() !== Order::STATE_PAYMENT_REVIEW) {
+                return $this->createResponse(__('No action required for order #%1.', $incrementId));
+            }
+
+            $this->webhookContext->completeOrderPayment->execute($order, $transactionId);
+            return $this->createResponse(__('Order #%1 payment completed.', $incrementId), true);
+        } catch (PaymentVerificationException $e) {
+            $this->webhookContext->cancelOrderPayment->execute(
+                $order,
+                (string)__('Payment could not be verified: %1', $e->getMessage()),
+                false,
+                $e->isPaymentTaken() ? $transactionId : null
+            );
+            return $this->createResponse(__('Order #%1 cancelled: %2', $incrementId, $e->getMessage()));
+        } catch (LocalizedException $e) {
+            return $this->createResponse(__('Error completing order #%1: %2', $incrementId, $e->getMessage()));
+        }
     }
 }

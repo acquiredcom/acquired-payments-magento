@@ -21,6 +21,7 @@ use Magento\Checkout\Model\Session as CheckoutSession;
 use Magento\Framework\Serialize\SerializerInterface;
 use Magento\Store\Model\StoreManagerInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
+use Magento\Quote\Api\Data\CartInterface;
 use Acquired\Payments\Gateway\Config\Card\Config as CardConfig;
 use Magento\Framework\UrlInterface;
 use Acquired\Payments\Exception\Api\SessionException;
@@ -71,9 +72,21 @@ class GetPaymentSessionData implements PaymentSessionDataInterface
      */
     public function execute(string $orderId, ?array $customData = null): array
     {
-        try {
-            $quote = $this->checkoutSession->getQuote();
+        return $this->executeForQuote($this->checkoutSession->getQuote(), $orderId, $customData);
+    }
 
+    /**
+     * Get payload for an Acquired checkout session for a specific quote, which may already be ordered
+     *
+     * @param CartInterface $quote
+     * @param string $orderId
+     * @param array|null $customData
+     * @return array|array[]
+     * @throws SessionException
+     */
+    public function executeForQuote(CartInterface $quote, string $orderId, ?array $customData = null): array
+    {
+        try {
             $payload = [
                 'transaction' => [
                     'order_id' => $orderId,

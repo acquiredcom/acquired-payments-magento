@@ -13,6 +13,8 @@ declare(strict_types=1);
 
 namespace Acquired\Payments\Cron;
 
+use Acquired\Payments\Service\OrderPayment\Cancel as CancelOrderPayment;
+use Acquired\Payments\Ui\Method\CardProvider;
 use Acquired\Payments\Ui\Method\PayByBankProvider;
 use Magento\Framework\Api\FilterBuilder;
 use Magento\Framework\Api\SearchCriteriaBuilderFactory;
@@ -35,7 +37,8 @@ class CancelPendingOrders
         private readonly FilterBuilder $filterBuilder,
         private readonly OrderRepositoryInterface $orderRepository,
         private readonly OrderManagementInterface $orderManagement,
-        private readonly ManagerInterface $eventManager
+        private readonly ManagerInterface $eventManager,
+        private readonly CancelOrderPayment $cancelOrderPayment
     ) {
     }
 
@@ -56,10 +59,13 @@ class CancelPendingOrders
             if (time() - strtotime($order->getCreatedAt()) >= $offset) {
                 $this->logger->debug('Cron job CancelPendingOrders cancelling order ' . $order->getIncrementId());
 
-                $order->registerCancellation('Order cancelled due to payment review timeout.');
-                $this->eventManager->dispatch('order_cancel_after', ['order' => $order]);
-
-                $this->orderRepository->save($order);
+                try {
+                    $this->cancelOrderPayment->execute($order, 'Order cancelled due to payment review timeout.');
+                } catch (\Throwable $e) {
+                    $this->logger->critical(
+                        'Cron job CancelPendingOrders could not cancel order ' . $order->getIncrementId() . ': ' . $e->getMessage()
+                    );
+                }
             } else {
                 $this->logger->debug('Cron job CancelPendingOrders skipping order ' . strtotime($order->getCreatedAt()) - time() . " | " . $order->getIncrementId());
             }
@@ -72,8 +78,8 @@ class CancelPendingOrders
     {
 
         $methodFilter = $this->filterBuilder->setField('extension_attribute_payment_method.method')
-            ->setConditionType('eq')
-            ->setValue(PayByBankProvider::CODE)
+            ->setConditionType('in')
+            ->setValue([PayByBankProvider::CODE, CardProvider::CODE, 'acquired_payments_express'])
             ->create();
 
         $statusFilter = $this->filterBuilder->setField('status')

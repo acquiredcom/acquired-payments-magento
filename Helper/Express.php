@@ -39,15 +39,14 @@ use Magento\Quote\Api\Data\AddressInterface;
 use Magento\Directory\Api\CountryInformationAcquirerInterface;
 use Magento\Customer\Model\Session as CustomerSession;
 use Magento\Framework\Pricing\PriceCurrencyInterface;
-use Magento\Sales\Model\Service\InvoiceService;
 use Magento\Quote\Model\QuoteManagement;
-use Magento\Sales\Api\OrderRepositoryInterface;
 use Magento\Framework\Event\ManagerInterface;
-use Magento\Sales\Api\InvoiceRepositoryInterface;
-use Magento\Sales\Model\Order\Email\Sender\InvoiceSender;
+use Magento\Sales\Api\Data\OrderInterface;
 use Magento\Directory\Model\RegionFactory;
 use Acquired\Payments\Client\Payment as PaymentClient;
-use Acquired\Payments\Client\Gateway;
+use Acquired\Payments\Exception\Payment\PaymentVerificationException;
+use Acquired\Payments\Service\OrderPayment\Cancel as CancelOrderPayment;
+use Acquired\Payments\Service\OrderPayment\Complete as CompleteOrderPayment;
 use Acquired\Payments\Gateway\Config\Card\Config as CardConfig;
 use Acquired\Payments\Model\Api\CreateAcquiredCustomer;
 
@@ -75,15 +74,12 @@ class Express
      * @param CustomerSession $customerSession
      * @param PriceCurrencyInterface $priceCurrency
      * @param QuoteManagement $quoteManagement
-     * @param InvoiceService $invoiceService
-     * @param OrderRepositoryInterface $orderRepository
      * @param ManagerInterface $eventManager
-     * @param InvoiceRepositoryInterface $invoiceRepository
      * @param StoreManagerInterface $storeManager
      * @param ScopeConfigInterface $scopeConfig
-     * @param InvoiceSender $invoiceSender
      * @param RegionFactory $regionFactory
-     * @param Gateway $gateway
+     * @param CompleteOrderPayment $completeOrderPayment
+     * @param CancelOrderPayment $cancelOrderPayment
      */
     public function __construct(
         private readonly PaymentClient $paymentClient,
@@ -104,15 +100,12 @@ class Express
         private readonly CustomerSession $customerSession,
         private readonly PriceCurrencyInterface $priceCurrency,
         private readonly QuoteManagement $quoteManagement,
-        private readonly InvoiceService $invoiceService,
-        private readonly OrderRepositoryInterface $orderRepository,
         private readonly ManagerInterface $eventManager,
-        private readonly InvoiceRepositoryInterface $invoiceRepository,
         private readonly StoreManagerInterface $storeManager,
         private readonly ScopeConfigInterface $scopeConfig,
-        private readonly InvoiceSender $invoiceSender,
         private readonly RegionFactory $regionFactory,
-        private readonly Gateway $gateway
+        private readonly CompleteOrderPayment $completeOrderPayment,
+        private readonly CancelOrderPayment $cancelOrderPayment
     ) {}
 
     /**
@@ -207,18 +200,26 @@ class Express
         $quote->collectTotals();
         $this->cartRepository->save($quote);
 
+        // The order is created before the payment is taken, so a payment can never exist without its order
+        try {
+            $order = $this->submitOrder($quote);
+        } catch (\Throwable $e) {
+            $this->logger->critical($e);
+            return [['error' => true, 'message' => 'Your order could not be created and you have not been charged. Please try again or proceed to regular checkout.']];
+        }
+
         $applePayToken = json_encode($params['applePayPaymentToken']['paymentData']);
 
         // It can happen that sometimes , is passed as amount
-        $amount = (string)$this->priceCurrency->roundPrice($quote->getGrandTotal());
+        $amount = (string)$this->priceCurrency->roundPrice($order->getGrandTotal());
         $amount = preg_replace('/\s+/', '', $amount);
         $amount = preg_replace('/[^0-9.]/', '', $amount);
 
         $payload = [
             'transaction' => [
-                'order_id' => $quote->getReservedOrderId(),
+                'order_id' => $order->getIncrementId(),
                 'amount'   => $amount,
-                'currency' => strtolower($quote->getCurrency()->getStoreCurrencyCode()),
+                'currency' => strtolower((string)$order->getOrderCurrencyCode()),
                 'capture'  => $this->cardConfig->getCaptureAction()
             ],
             'payment' => [
@@ -241,48 +242,50 @@ class Express
             $apiResult = $this->paymentClient->process($payload, 'apple_pay');
         } catch (\Throwable $e) {
             $this->logger->critical($e);
+            $this->cancelOrder($order, 'Apple Pay payment request failed.');
             return [['error' => true, 'message' => 'Unexpected error during payment. Please try again or proceed to regular checkout.']];
         }
 
         if (!$apiResult || !isset($apiResult['status']) || !in_array($apiResult['status'], ['success','settled','executed'], true)) {
+            $this->cancelOrder($order, 'Apple Pay payment declined.');
             return [['error' => true, 'message' => 'Transaction declined. Please try again or proceed to regular checkout.']];
         }
 
         $transactionId = (string)($apiResult['transaction_id'] ?? '');
 
         try {
-            $this->doPlaceOrder($transactionId, $quote);
+            $this->completeOrderPayment->execute($order, $transactionId);
+        } catch (PaymentVerificationException $e) {
+            $this->logger->critical($e->getMessage());
+            $this->cancelOrder(
+                $order,
+                (string)__('Apple Pay payment could not be verified: %1', $e->getMessage()),
+                $e->isPaymentTaken() ? $transactionId : null
+            );
+            return [['error' => true, 'message' => 'Your payment could not be confirmed and has been cancelled. Please try again or proceed to regular checkout.']];
         } catch (\Throwable $e) {
-            $this->logger->critical($e);
-            if ($this->voidTransaction($transactionId)) {
-                return [['error' => true, 'message' => 'Your order could not be created and the payment has been cancelled. Please try again or proceed to regular checkout.']];
-            }
-
-            return [['error' => true, 'message' => sprintf(
-                'Your order could not be created and we could not confirm the payment was cancelled. Please do not try again; contact us quoting reference %s.',
-                $quote->getReservedOrderId()
-            )]];
+            // Acquired took the payment, so the order stays in payment review for the webhook to complete
+            $this->logger->critical(
+                __('Apple Pay order %1 was paid but could not be completed: %2', $order->getIncrementId(), $e->getMessage()),
+                ['exception' => $e, 'transaction_id' => $transactionId]
+            );
         }
 
         return [[ 'url' => $this->url->getUrl('checkout/onepage/success') ]];
     }
 
     /**
-     * Real Place order
+     * Create the order in payment review, before any payment is taken
      *
-     * Throws only when no order was created, so the caller can safely void the payment.
-     *
-     * @param string $transactionId
      * @param CartInterface $quote
-     * @return void
+     * @return OrderInterface
      * @throws LocalizedException
      */
-    public function doPlaceOrder(string $transactionId, CartInterface $quote): void
+    public function submitOrder(CartInterface $quote): OrderInterface
     {
         $quote->getPayment()->importData([
             'method' => 'acquired_payments_express',
             'additional_data' => [
-                'transaction_id' => $transactionId,
                 'payment_location' => 'mini-basket'
             ]
         ]);
@@ -317,69 +320,36 @@ class Express
                 ]
             );
 
-            // Create invoice if mode = capture
-            if ($order->canInvoice() && $this->cardConfig->getCaptureAction()) {
-                $invoice = $this->invoiceService->prepareInvoice($order);
-                $invoice->setRequestedCaptureCase(\Magento\Sales\Model\Order\Invoice::CAPTURE_OFFLINE);
-
-                $invoice->setTransactionId($transactionId);
-                $order->getPayment()->setLastTransId($transactionId);
-                $order->getPayment()->setAdditionalInformation('transaction_id', $transactionId)
-                    ->setAdditionalInformation('payment_location', 'mini-basket');
-
-                $invoice->register();
-                $invoice->pay();
-
-                $this->invoiceRepository->save($invoice);
-
-                // Update state and status
-                $state = \Magento\Sales\Model\Order::STATE_PROCESSING;
-                $status = $order->getConfig()->getStateDefaultStatus($state);
-                $order->setState($state)->addStatusToHistory(
-                    $status,
-                    "Apple Pay express payment successufully captured.",
-                    false
-                );
-
-                $this->orderRepository->save($order);
-                $this->invoiceSender->send($invoice);
-            }
-
             $quote->setIsActive(false);
             $this->cartRepository->save($quote);
         } catch (\Throwable $e) {
-            // The order and payment both exist, so this must not trigger a void
             $this->logger->critical(
                 __('Apple Pay order %1 created but post-order processing failed: %2', $order->getIncrementId(), $e->getMessage()),
-                ['exception' => $e, 'transaction_id' => $transactionId]
+                ['exception' => $e]
             );
         }
+
+        return $order;
     }
 
     /**
-     * Void a payment that was taken but has no order behind it
+     * Cancel an Apple Pay order whose payment failed and give the shopper their cart back
      *
-     * @param string $transactionId
-     * @return bool whether the gateway confirmed the void
+     * @param OrderInterface $order
+     * @param string $reason
+     * @param string|null $voidTransactionId
+     * @return void
      */
-    private function voidTransaction(string $transactionId): bool
+    private function cancelOrder(OrderInterface $order, string $reason, ?string $voidTransactionId = null): void
     {
         try {
-            $response = $this->gateway->getTransaction()->void($transactionId);
-            if (($response['status'] ?? '') === 'success') {
-                return true;
-            }
-            $this->logger->critical(
-                __('Apple Pay void not confirmed for orphaned transaction %1', $transactionId),
-                ['response' => $response]
-            );
+            $this->cancelOrderPayment->execute($order, $reason, true, $voidTransactionId);
         } catch (\Throwable $e) {
             $this->logger->critical(
-                __('Apple Pay void failed for orphaned transaction %1: %2', $transactionId, $e->getMessage())
+                __('Apple Pay order %1 could not be cancelled: %2', $order->getIncrementId(), $e->getMessage()),
+                ['exception' => $e]
             );
         }
-
-        return false;
     }
 
     /**

@@ -103,6 +103,7 @@
         <arguments>
             <argument name="handlers" xsi:type="array">
                 <item name="default" xsi:type="string">AcquiredCcValueHandler</item>
+                <item name="payment_action" xsi:type="string">Acquired\Payments\Gateway\Config\Card\PaymentActionValueHandler</item>
             </argument>
         </arguments>
     </virtualType>
@@ -141,7 +142,7 @@
     <virtualType name="AcquiredCardCommandPool" type="Magento\Payment\Gateway\Command\CommandPool">
         <arguments>
             <argument name="commands" xsi:type="array">
-                <item name="authorize" xsi:type="string">AcquiredCardAuthorizeCommand</item>
+                <item name="authorize" xsi:type="string">AcquiredCardConditionalAuthorizeCommand</item>
                 <item name="capture" xsi:type="string">AcquiredCardCaptureCommand</item>
                 <item name="void" xsi:type="string">AcquiredCardVoidCommand</item>
                 <item name="refund" xsi:type="string">AcquiredCardRefundCommand</item>
@@ -163,6 +164,7 @@
     <virtualType name="AcquiredExpressCommandPool" type="Magento\Payment\Gateway\Command\CommandPool">
         <arguments>
             <argument name="commands" xsi:type="array">
+                <item name="authorize" xsi:type="string">AcquiredOrderFirstAuthorizeCommand</item>
                 <item name="void" xsi:type="string">AcquiredCardVoidCommand</item>
                 <item name="refund" xsi:type="string">AcquiredCardRefundCommand</item>
             </argument>
@@ -170,6 +172,21 @@
     </virtualType>
 
     <!-- PLACE ORDER -->
+    <virtualType name="AcquiredCardConditionalAuthorizeCommand" type="Acquired\Payments\Gateway\Command\CardAuthorizeCommand">
+        <arguments>
+            <argument name="orderFirstCommand" xsi:type="object">AcquiredOrderFirstAuthorizeCommand</argument>
+            <argument name="paidCommand" xsi:type="object">AcquiredCardAuthorizeCommand</argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="AcquiredOrderFirstAuthorizeCommand" type="Magento\Payment\Gateway\Command\GatewayCommand">
+        <arguments>
+            <argument name="requestBuilder" xsi:type="object">Acquired\Payments\Gateway\Request\OrderFirstBuilder</argument>
+            <argument name="transferFactory" xsi:type="object">Acquired\Payments\Gateway\Http\TransferFactory</argument>
+            <argument name="client" xsi:type="object">Acquired\Payments\Gateway\Http\Client\NoAction</argument>
+            <argument name="handler" xsi:type="object">Acquired\Payments\Gateway\Response\OrderFirst\PendingPaymentHandler</argument>
+            <argument name="validator" xsi:type="object">Acquired\Payments\Gateway\Validator\ResponseValidator</argument>
+        </arguments>
+    </virtualType>
     <virtualType name="AcquiredCardAuthorizeCommand" type="Magento\Payment\Gateway\Command\GatewayCommand">
         <arguments>
             <argument name="requestBuilder" xsi:type="object">Acquired\Payments\Gateway\Request\CardAuthorizeBuilder</argument>
@@ -456,6 +473,40 @@
         </arguments>
     </type>
     <!-- END PAYMENT LOGGERS -->
+
+    <!-- ORDER PAYMENT LOGGERS -->
+    <type name="Acquired\Payments\Service\OrderPayment\Complete">
+        <arguments>
+            <argument name="logger" xsi:type="object">AcquiredPaymentLogger</argument>
+        </arguments>
+    </type>
+    <type name="Acquired\Payments\Service\OrderPayment\Cancel">
+        <arguments>
+            <argument name="logger" xsi:type="object">AcquiredPaymentLogger</argument>
+            <argument name="checkoutSession" xsi:type="object">Magento\Checkout\Model\Session\Proxy</argument>
+        </arguments>
+    </type>
+    <type name="Acquired\Payments\Service\OrderPayment\Prepare">
+        <arguments>
+            <argument name="logger" xsi:type="object">AcquiredPaymentLogger</argument>
+        </arguments>
+    </type>
+    <type name="Acquired\Payments\Controller\OrderPayment\Prepare">
+        <arguments>
+            <argument name="logger" xsi:type="object">AcquiredPaymentLogger</argument>
+        </arguments>
+    </type>
+    <type name="Acquired\Payments\Controller\OrderPayment\Complete">
+        <arguments>
+            <argument name="logger" xsi:type="object">AcquiredPaymentLogger</argument>
+        </arguments>
+    </type>
+    <type name="Acquired\Payments\Controller\OrderPayment\Cancel">
+        <arguments>
+            <argument name="logger" xsi:type="object">AcquiredPaymentLogger</argument>
+        </arguments>
+    </type>
+    <!-- END ORDER PAYMENT LOGGERS -->
 
     <!-- WEBHOOK LOGGERS -->
     <type name="Acquired\Payments\Controller\Webhook\Index">
