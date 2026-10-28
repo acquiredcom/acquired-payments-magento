@@ -2,6 +2,10 @@
 
 All notable release changes to this project will be documented in this file.
 
+## [1.0.4] - Release Version
+- Fix auth token caching on multi-website setups
+- Improve PHP compatibility
+
 ## [1.0.3] - Release Version
 - Improve security by eliminating an attack vector
 - Improve code quality

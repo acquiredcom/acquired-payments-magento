@@ -15,7 +15,7 @@ use Magento\Framework\App\ProductMetadataInterface;
 
 class Config
 {
-    public static $version = "1.0.3";
+    public static $version = "1.0.4";
 
     public function __construct(
         private readonly ProductMetadataInterface $productMetadata
