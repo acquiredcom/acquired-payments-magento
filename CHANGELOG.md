@@ -23,6 +23,10 @@ All notable release changes to this project will be documented in this file.
 - Fix Apple Pay session start failing when Apple omits optional merchant session fields such as `retries`
 - Fix Apple Pay express doubling per-item shipping rates for configurable products, which caused amount mismatch declines
 - Fix Apple Pay sheet showing doubled per-item shipping rates for configurable products
+- Create the Magento order before taking payment for card (Components, including Apple Pay and Google Pay) and Apple Pay express checkout, so a payment can no longer be taken without an order. Orders wait in payment review until Acquired confirms the payment; failed payments cancel the order and restore the cart
+- Complete or cancel card and Apple Pay express orders from Acquired webhooks, and void payments that arrive for an already cancelled order
+- Cancel abandoned card and Apple Pay express orders left in payment review after 24 hours, as for Pay By Bank
+- Fix webhook cancellation of orders in payment review, which Magento refused to cancel
 - Improve error handling and logging in Express checkout flow
 - Code quality improvements and refactoring
 

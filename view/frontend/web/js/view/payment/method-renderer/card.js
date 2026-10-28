@@ -18,7 +18,7 @@ define(
         'mage/storage',
         'Magento_Checkout/js/model/url-builder',
         'Magento_Ui/js/model/messageList',
-        'Magento_Checkout/js/action/redirect-on-success',
+        'mage/url',
         'acquiredLoader',
         'Magento_Checkout/js/model/payment/additional-validators',
         'Magento_CheckoutAgreements/js/model/agreement-validator'
@@ -34,7 +34,7 @@ define(
         storage,
         urlBuilder,
         messageList,
-        redirectOnSuccessAction,
+        mageUrl,
         acquiredLoader,
         additionalValidators,
         agreementValidator
@@ -49,7 +49,6 @@ define(
                 template: 'Acquired_Payments/payment/card',
                 active: false,
                 checkoutType: '',
-                confirmParams: null,
                 code: 'acquired_card',
                 placeholder: '#acquired-payments-card-component',
                 /**
@@ -237,10 +236,6 @@ define(
 
                         // we switched to apple / google pay, switch to new flow
                         self.checkoutType = response.toComponent;
-
-                        if(self.isWalletPayment() && !self.confirmParams) {
-                            self.getConfirmParams();
-                        }
                     }
 
                     if(message && message.data && message.data.event && message.data.event == "submit-response") {
@@ -326,32 +321,6 @@ define(
             },
 
             /**
-             * Get confirm parameters
-             *
-             * @returns {Promise<void>}
-             */
-            getConfirmParams: async function () {
-                const self = this;
-                self.confirmParams = {};
-                let getConfirmParamsUrl = urlBuilder.createUrl('/acquired/confirm-params/' + this.getNonce(), {});
-                try {
-                    let confirmParams = await storage.post(getConfirmParamsUrl);
-                    if (typeof confirmParams !== "undefined" && typeof confirmParams[0] !== "undefined") {
-                        self.confirmParams = confirmParams[0];
-                        return confirmParams[0];
-                    } else {
-                        self.confirmParams = {};
-                        return {};
-                    }
-                } catch (error) {
-                    self.confirmParams = null;
-                    this.updateNonce();
-                    await this.getSession(true);
-                    throw new Error($t('There was an issue confirming the payment.'));
-                }
-            },
-
-            /**
              * Get data
              * @returns {Object}
              */
@@ -359,10 +328,7 @@ define(
                 return {
                     'method': this.getCode(),
                     'additional_data': {
-                        'transaction_id': this.transactionId(),
-                        'order_id': this.orderId(),
-                        'timestamp': this.timestamp(),
-                        'hash': this.hash(),
+                        'order_first': true
                     }
                 };
             },
@@ -377,10 +343,13 @@ define(
 
             /**
              * Action to place order
-             * @param {String} key
+             *
+             * The Magento order is placed before any payment is taken, so a payment can never exist without its
+             * order. If the payment then fails, the order is cancelled and the shopper's cart restored.
              */
-            placeOrder: async function (key) {
+            placeOrder: async function () {
                 let self = this;
+                let orderPlaced = false;
 
                 if (!this.validate() || !additionalValidators.validate() || !agreementValidator.validate()) {
                     return false;
@@ -404,61 +373,95 @@ define(
                 }
 
                 try {
-                    await this.formSubmitListener();
+                    await this.placeMagentoOrder();
+                    orderPlaced = true;
 
-                    if (key) {
-                        this.getPlaceOrderDeferredObject()
-                            .done(
-                                function () {
-                                    self.afterPlaceOrder();
-                                    if (self.redirectAfterPlaceOrder) {
-                                        redirectOnSuccessAction.execute();
-                                    }
-                                }
-                            ).fail(
-                                function () {
-                                    self.afterPlaceOrder();
-                                    self.resetPlaceOrder();
-                                }
-                            ).always(
-                                function () {
-                                    self.afterPlaceOrder();
-                                    self.isPlaceOrderActionAllowed(true);
-                                }
-                            );
-                    }
-                    return true;
+                    const prepared = await this.postOrderPayment('prepare');
+                    await this.formSubmitListener(prepared.confirm_params);
 
-                } catch (error) {
-                    messageList.addErrorMessage({
-                        message: error.message || $t('An unexpected error occurred during the order placement. Please try again later.')
+                    const completed = await this.postOrderPayment('complete', {
+                        transaction_id: this.transactionId()
                     });
-                    this.resetPlaceOrder();
-                    try {
-                        await this.updateSession();
-                    } catch (error) {
-                        // in case of session failure we re-initialize the form
-                        await this.initAcquired(true);
+
+                    this.afterPlaceOrder();
+                    window.location.replace(completed.redirect);
+
+                    return true;
+                } catch (error) {
+                    if (orderPlaced) {
+                        try {
+                            await this.postOrderPayment('cancel');
+                        } catch (cancelError) {
+                            error = cancelError;
+                        }
                     }
 
-                } finally {
-                    fullScreenLoader.stopLoader();
-                    this.isPlaceOrderActionAllowed(true);
+                    // a failed Magento order placement has already shown its own message
+                    if (error) {
+                        messageList.addErrorMessage({
+                            message: error.message || $t('An unexpected error occurred during the order placement. Please try again later.')
+                        });
+                    }
+
+                    this.resetPlaceOrder();
+                    await this.initAcquired(true);
                 }
 
                 return false;
             },
 
             /**
+             * Place the Magento order, which waits in payment review until the payment completes
+             *
+             * @returns {Promise}
+             */
+            placeMagentoOrder: function () {
+                const self = this;
+
+                return new Promise(function (resolve, reject) {
+                    self.getPlaceOrderDeferredObject()
+                        .done(resolve)
+                        .fail(function () {
+                            reject(null);
+                        });
+                });
+            },
+
+            /**
+             * Run a payment step for the order just placed
+             *
+             * @param {String} action prepare, complete or cancel
+             * @param {Object} data
+             * @returns {Promise<Object>}
+             */
+            postOrderPayment: function (action, data) {
+                return new Promise(function (resolve, reject) {
+                    $.ajax({
+                        url: mageUrl.build('acquired/orderpayment/' + action),
+                        type: 'POST',
+                        contentType: 'application/json',
+                        dataType: 'json',
+                        data: JSON.stringify(data || {})
+                    }).done(function (response) {
+                        if (!response || response.error) {
+                            reject(new Error(response && response.message));
+                            return;
+                        }
+                        resolve(response);
+                    }).fail(function () {
+                        reject(new Error($t('There was an issue submitting your payment.')));
+                    });
+                });
+            },
+
+            /**
              * Submit request to acquired
              *
+             * @param {Object} confirmParams
              * @returns {Object}
              */
-            formSubmitListener: async function () {
+            formSubmitListener: async function (confirmParams) {
                 try {
-                    // if we are in apple pay / google pay mode we cannot get the confirm params from the server and need to use the ones we have
-                    const confirmParams = this.isCardPayment() ? await this.getConfirmParams() : this.confirmParams;
-
                     let response = await acquired.confirmPayment(
                         {
                             components: this.acquiredComponent,

@@ -17,6 +17,7 @@ use Exception;
 use Psr\Log\LoggerInterface;
 use Magento\Framework\UrlInterface;
 use Magento\Checkout\Model\Session as CheckoutSession;
+use Magento\Quote\Api\Data\CartInterface;
 use Magento\Customer\Api\CustomerRepositoryInterface;
 use Magento\Customer\Model\Session as CustomerSession;
 use Acquired\Payments\Exception\Api\PaymentConfirmParamsException;
@@ -61,28 +62,7 @@ class GetPaymentConfirmParams
     {
 
         try {
-            $confirmParams = [];
-
-            $customer =  $this->customerSession->isLoggedIn() ? $this->customerRepository->getById($this->customerSession->getCustomerId()) : null;
-            $quote = $this->checkoutSession->getQuote();
-
-            $billingAddress = $quote->getBillingAddress();
-            $shippingAddress = $quote->getShippingAddress();
-
-            $confirmParams['customer'] = [
-                'webhook_url' => $this->urlBuilder->getUrl('acquired/webhook')
-            ];
-
-            if ($customer) {
-                $confirmParams['reference'] = $customer->getExtensionAttributes()->getAcquiredCustomerId();
-            }
-
-            /**
-             * @var TransactionAddressDataInterface $addressData
-             */
-            $addressData = $this->getTransactionAddressData->execute($quote);
-            $confirmParams['customer']['billing'] = $addressData->getBilling();
-            $confirmParams['customer']['shipping'] = $addressData->getShipping() ?? [];
+            $confirmParams = $this->buildForQuote($this->checkoutSession->getQuote());
 
             // update acquired session
             $this->acquiredSession->prepareForPurchase($nonce);
@@ -95,5 +75,35 @@ class GetPaymentConfirmParams
 
             throw new PaymentConfirmParamsException($message);
         }
+    }
+
+    /**
+     * Build confirm parameters from a quote, which may already be ordered
+     *
+     * @param CartInterface $quote
+     * @return array
+     */
+    public function buildForQuote(CartInterface $quote): array
+    {
+        $customer = $this->customerSession->isLoggedIn()
+            ? $this->customerRepository->getById($this->customerSession->getCustomerId())
+            : null;
+
+        $confirmParams['customer'] = [
+            'webhook_url' => $this->urlBuilder->getUrl('acquired/webhook')
+        ];
+
+        if ($customer) {
+            $confirmParams['reference'] = $customer->getExtensionAttributes()->getAcquiredCustomerId();
+        }
+
+        /**
+         * @var TransactionAddressDataInterface $addressData
+         */
+        $addressData = $this->getTransactionAddressData->execute($quote);
+        $confirmParams['customer']['billing'] = $addressData->getBilling();
+        $confirmParams['customer']['shipping'] = $addressData->getShipping() ?? [];
+
+        return $confirmParams;
     }
 }
