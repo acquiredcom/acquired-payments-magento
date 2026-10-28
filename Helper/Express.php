@@ -172,8 +172,11 @@ class Express
         }
 
         // Apple Pay doesn't fire onshippingmethodselected when the shopper keeps the pre-selected
-        // method, so the rates may never have been saved on the quote.
-        $shippingAddress->setCollectShippingRates(true)->collectShippingRates();
+        // method, so the rates may never have been saved on the quote. Rates are collected through
+        // collectTotals so the address item qty is set first; calling collectShippingRates directly
+        // counts configurable parent and child items twice and doubles per-item rates.
+        $shippingAddress->setCollectShippingRates(true);
+        $quote->setTotalsCollectedFlag(false)->collectTotals();
         if (!$shippingAddress->getShippingMethod()
             || !$shippingAddress->getShippingRateByCode($shippingAddress->getShippingMethod())
         ) {
