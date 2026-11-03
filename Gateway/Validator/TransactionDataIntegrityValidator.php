@@ -14,6 +14,7 @@ declare(strict_types=1);
 namespace Acquired\Payments\Gateway\Validator;
 
 use Acquired\Payments\Gateway\Config\Basic;
+use Magento\Framework\Exception\LocalizedException;
 
 /**
  * @class RequestBuilderValidator
@@ -43,7 +44,7 @@ class TransactionDataIntegrityValidator {
             $data[self::TIMESTAMP_KEY],
             $data[self::HASH_KEY]
         )) {
-            throw new Exception(__('Invalid data format'));
+            throw new LocalizedException(__('Invalid data format'));
         }
 
         $concatenatedParams = implode('', [
@@ -56,8 +57,8 @@ class TransactionDataIntegrityValidator {
         $paramsHash = hash(self::ALGORITHM_KEY, $concatenatedParams);
         $generatedHash = hash(self::ALGORITHM_KEY, $paramsHash . $this->basicConfig->getApiSecret());
 
-        if(!$generatedHash === $data[self::HASH_KEY]) {
-            throw new Exception(__('Invalid data integrity'));
+        if($generatedHash !== $data[self::HASH_KEY]) {
+            throw new LocalizedException(__('Invalid data integrity'));
         }
     }
 
