@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 namespace Acquired\Payments\Service;
 
+use Acquired\Payments\Ui\Method\CardProvider;
 use Acquired\Payments\Ui\Method\PayByBankProvider;
 use Magento\Framework\DB\TransactionFactory;
 use Magento\Framework\Exception\LocalizedException;
@@ -27,7 +28,7 @@ use Magento\Sales\Model\Service\InvoiceService;
 /**
  * @class InvoicePaidOrder
  *
- * Invoices a Pay By Bank order once Acquired has confirmed payment, at most once per order.
+ * Invoices a Pay By Bank order, or a card multishipping order, once Acquired has confirmed payment, at most once per order.
  */
 class InvoicePaidOrder
 {
@@ -53,13 +54,14 @@ class InvoicePaidOrder
     }
 
     /**
-     * Invoice the order if it is still awaiting payment review.
+     * Invoice the order if it is still awaiting payment.
      *
      * @param int $orderId
      * @param string $transactionId
+     * @param bool $isMultishipping
      * @return array
      */
-    public function execute(int $orderId, string $transactionId): array
+    public function execute(int $orderId, string $transactionId, bool $isMultishipping = false): array
     {
         $lockName = self::LOCK_PREFIX . $orderId;
         if (!$this->lockManager->lock($lockName, self::LOCK_TIMEOUT)) {
@@ -71,14 +73,16 @@ class InvoicePaidOrder
             $order = $this->orderFactory->create()->load($orderId);
             $incrementId = (string) $order->getIncrementId();
 
-            if (!$this->isAwaitingPayment($order)) {
+            if (!$this->isAwaitingPayment($order, $isMultishipping)) {
                 return $this->createResponse(__('Order #%1 is not awaiting payment.', $incrementId));
             }
 
-            $order->setState(Order::STATE_PROCESSING);
+            if ($order->getState() === Order::STATE_PAYMENT_REVIEW) {
+                $order->setState(Order::STATE_PROCESSING);
+            }
 
             if (!$order->canInvoice()) {
-                return $this->createResponse(__('Order #%1 cannot be invoiced.', $incrementId));
+                return $this->createResponse(__('Order #%1 cannot be invoiced.', $incrementId), false, true);
             }
 
             return $this->invoice($order, $incrementId, $transactionId);
@@ -88,16 +92,25 @@ class InvoicePaidOrder
     }
 
     /**
+     * Card multishipping orders are only authorised at checkout and are captured by this invoice.
+     *
      * @param Order $order
+     * @param bool $isMultishipping
      * @return bool
      */
-    private function isAwaitingPayment(Order $order): bool
+    private function isAwaitingPayment(Order $order, bool $isMultishipping): bool
     {
-        return $order->getId()
-            && $order->getPayment()
-            && $order->getPayment()->getMethod() === PayByBankProvider::CODE
-            && $order->getState() === Order::STATE_PAYMENT_REVIEW
-            && !$order->hasInvoices();
+        if (!$order->getId() || !$order->getPayment() || $order->hasInvoices()) {
+            return false;
+        }
+
+        $method = $order->getPayment()->getMethod();
+
+        if ($method === PayByBankProvider::CODE) {
+            return $order->getState() === Order::STATE_PAYMENT_REVIEW;
+        }
+
+        return $isMultishipping && $method === CardProvider::CODE;
     }
 
     /**

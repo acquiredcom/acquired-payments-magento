@@ -43,6 +43,8 @@ class Index extends Action implements HttpPostActionInterface, CsrfAwareActionIn
 
     private const WEBHOOK_VERSION_KEY = 'Webhook-Version';
     private const WEBHOOK_HASH_KEY = 'Hash';
+    private const STATUS_UPDATE_TYPE = 'status_update';
+    private const STATUS_UPDATE_FIELDS = ['order_id', 'status', 'transaction_id'];
 
     /**
      * @param Context $context
@@ -94,6 +96,14 @@ class Index extends Action implements HttpPostActionInterface, CsrfAwareActionIn
                 || !is_array($webhookData['webhook_body'])
             ) {
                 throw new InvalidArgumentException((string) __('Invalid webhook payload.'));
+            }
+
+            if ($webhookData['webhook_type'] === self::STATUS_UPDATE_TYPE) {
+                foreach (self::STATUS_UPDATE_FIELDS as $field) {
+                    if (!isset($webhookData['webhook_body'][$field]) || !is_string($webhookData['webhook_body'][$field])) {
+                        throw new InvalidArgumentException((string) __('Invalid webhook payload.'));
+                    }
+                }
             }
 
             $this->logger->debug(

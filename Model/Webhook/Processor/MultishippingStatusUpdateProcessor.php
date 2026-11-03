@@ -87,16 +87,19 @@ class MultishippingStatusUpdateProcessor extends AbstractProcessor
     protected function bulkCancelOrders($orders, $transactionId)
     {
         $success = true;
+        $retryable = false;
         $messages = [];
 
         foreach ($orders as $order) {
             $invoiceResult = $this->cancelOrder($order, $order->getIncrementId(), $transactionId);
             $success = $success && $invoiceResult['success'];
+            $retryable = $retryable || !empty($invoiceResult['retryable']);
             $messages[] = $invoiceResult;
         }
 
         $response = [
             'success' => $success,
+            'retryable' => $retryable,
             'messages' => $messages
         ];
 
@@ -110,7 +113,7 @@ class MultishippingStatusUpdateProcessor extends AbstractProcessor
         $messages = [];
 
         foreach ($orders as $order) {
-            $invoiceResult = $this->invoiceOrder($order, $order->getIncrementId(), $transactionId);
+            $invoiceResult = $this->invoiceOrder($order, $order->getIncrementId(), $transactionId, true);
             $success = $success && $invoiceResult['success'];
             $retryable = $retryable || !empty($invoiceResult['retryable']);
             $messages[] = $invoiceResult;

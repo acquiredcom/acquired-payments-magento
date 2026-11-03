@@ -25,6 +25,7 @@ use Acquired\Payments\Ui\Method\PayByBankProvider;
 use Magento\Framework\Api\SearchCriteria;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Framework\DB\Transaction;
+use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Serialize\SerializerInterface;
 use Magento\Sales\Api\Data\OrderSearchResultInterface;
 use Magento\Sales\Api\OrderManagementInterface;
@@ -48,6 +49,7 @@ class OrderStatusUpdateProcessorTest extends TestCase
     private $orderRepository;
     private $searchCriteriaBuilder;
     private $invoicePaidOrder;
+    private $orderManagement;
     private $processor;
 
     protected function setUp(): void
@@ -64,12 +66,13 @@ class OrderStatusUpdateProcessorTest extends TestCase
         $this->searchCriteriaBuilder->method('setPageSize')->willReturnSelf();
         $this->searchCriteriaBuilder->method('create')->willReturn($this->createMock(SearchCriteria::class));
         $this->invoicePaidOrder = $this->createMock(InvoicePaidOrder::class);
+        $this->orderManagement = $this->createMock(OrderManagementInterface::class);
 
         $webhookContext = new WebhookContext(
             $this->basicConfig,
             $this->serializer,
             $this->orderRepository,
-            $this->createMock(OrderManagementInterface::class),
+            $this->orderManagement,
             $this->searchCriteriaBuilder,
             $this->createMock(InvoiceService::class),
             $this->createMock(Transaction::class),
@@ -149,6 +152,20 @@ class OrderStatusUpdateProcessorTest extends TestCase
 
         $this->assertTrue($first['success']);
         $this->assertFalse($second['success']);
+    }
+
+    public function testCancellationFailureIsRetryable()
+    {
+        $order = $this->createOrder();
+        $order->method('canCancel')->willReturn(true);
+        $this->givenOrders([$order]);
+        $this->orderManagement->method('cancel')
+            ->willThrowException(new LocalizedException(__('Could not void payment')));
+
+        $result = $this->processor->execute($this->webhookData('cancelled'), $this->validHash(), '2');
+
+        $this->assertFalse($result['success']);
+        $this->assertTrue($result['retryable']);
     }
 
     private function webhookData(string $status, string $orderId = '000000007'): array

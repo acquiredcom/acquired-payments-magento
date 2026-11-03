@@ -14,6 +14,7 @@ declare(strict_types=1);
 namespace Acquired\Payments\Test\Unit\Service;
 
 use Acquired\Payments\Service\InvoicePaidOrder;
+use Acquired\Payments\Ui\Method\CardProvider;
 use Acquired\Payments\Ui\Method\PayByBankProvider;
 use Magento\Framework\DB\Transaction;
 use Magento\Framework\DB\TransactionFactory;
@@ -42,6 +43,7 @@ class InvoicePaidOrderTest extends TestCase
     private $invoiceSender;
     private $order;
     private $payment;
+    private $paymentMethod = PayByBankProvider::CODE;
     private $invoicePaidOrder;
 
     protected function setUp(): void
@@ -54,7 +56,7 @@ class InvoicePaidOrderTest extends TestCase
         $this->invoiceSender = $this->createMock(InvoiceSender::class);
 
         $this->payment = $this->createMock(Payment::class);
-        $this->payment->method('getMethod')->willReturn(PayByBankProvider::CODE);
+        $this->payment->method('getMethod')->willReturnCallback(fn () => $this->paymentMethod);
 
         $this->order = $this->createMock(Order::class);
         $this->order->method('load')->willReturnSelf();
@@ -81,6 +83,62 @@ class InvoicePaidOrderTest extends TestCase
         $this->order->method('canInvoice')->willReturn(true);
         $this->order->expects($this->once())->method('setState')->with(Order::STATE_PROCESSING);
 
+        $this->expectInvoiceSaved();
+
+        $result = $this->invoicePaidOrder->execute(self::ORDER_ID, self::TRANSACTION_ID);
+
+        $this->assertTrue($result['success']);
+        $this->assertFalse($result['retryable']);
+    }
+
+    public function testInvoicesAuthorisedCardMultishippingOrder()
+    {
+        $this->paymentMethod = CardProvider::CODE;
+        $this->givenLockAcquired();
+        $this->order->method('getState')->willReturn(Order::STATE_PROCESSING);
+        $this->order->method('hasInvoices')->willReturn(false);
+        $this->order->method('canInvoice')->willReturn(true);
+        $this->order->expects($this->never())->method('setState');
+
+        $this->expectInvoiceSaved();
+
+        $result = $this->invoicePaidOrder->execute(self::ORDER_ID, self::TRANSACTION_ID, true);
+
+        $this->assertTrue($result['success']);
+    }
+
+    public function testDoesNotInvoiceCardOrderOutsideMultishipping()
+    {
+        $this->paymentMethod = CardProvider::CODE;
+        $this->givenLockAcquired();
+        $this->order->method('getState')->willReturn(Order::STATE_PROCESSING);
+        $this->order->method('hasInvoices')->willReturn(false);
+
+        $this->invoiceService->expects($this->never())->method('prepareInvoice');
+
+        $result = $this->invoicePaidOrder->execute(self::ORDER_ID, self::TRANSACTION_ID);
+
+        $this->assertFalse($result['success']);
+        $this->assertFalse($result['retryable']);
+    }
+
+    public function testOrderThatCannotBeInvoicedIsRetryable()
+    {
+        $this->givenLockAcquired();
+        $this->order->method('getState')->willReturn(Order::STATE_PAYMENT_REVIEW);
+        $this->order->method('hasInvoices')->willReturn(false);
+        $this->order->method('canInvoice')->willReturn(false);
+
+        $this->invoiceService->expects($this->never())->method('prepareInvoice');
+
+        $result = $this->invoicePaidOrder->execute(self::ORDER_ID, self::TRANSACTION_ID);
+
+        $this->assertFalse($result['success']);
+        $this->assertTrue($result['retryable']);
+    }
+
+    private function expectInvoiceSaved(): void
+    {
         $history = $this->createMock(History::class);
         $history->method('setIsCustomerNotified')->willReturnSelf();
         $this->order->method('addCommentToStatusHistory')->willReturn($history);
@@ -103,11 +161,6 @@ class InvoicePaidOrderTest extends TestCase
 
         $this->orderSender->expects($this->once())->method('send')->with($this->order);
         $this->invoiceSender->expects($this->once())->method('send')->with($invoice);
-
-        $result = $this->invoicePaidOrder->execute(self::ORDER_ID, self::TRANSACTION_ID);
-
-        $this->assertTrue($result['success']);
-        $this->assertFalse($result['retryable']);
     }
 
     public function testInvoicingErrorIsRetryable()

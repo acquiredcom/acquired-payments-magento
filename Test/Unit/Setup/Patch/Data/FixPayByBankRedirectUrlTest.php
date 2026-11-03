@@ -34,7 +34,7 @@ class FixPayByBankRedirectUrlTest extends TestCase
                 ['value' => 'acquired/hosted/response'],
                 [
                     'path = ?' => 'payment/acquired_pay_by_bank/redirect_url',
-                    'value IN (?)' => ['acquired/hosted/redirect', 'acquired/hosted/redirect/', '/acquired/hosted/redirect']
+                    'value IN (?)' => ['acquired/hosted/redirect', 'acquired/hosted/redirect/', '/acquired/hosted/redirect', '/acquired/hosted/redirect/']
                 ]
             );
 
