@@ -27,6 +27,7 @@ use Magento\Sales\Model\Service\InvoiceService;
 use Magento\Framework\DB\Transaction;
 use Magento\Sales\Model\Order\Email\Sender\InvoiceSender;
 use Magento\Sales\Model\Order\Email\Sender\OrderSender;
+use Acquired\Payments\Service\InvoicePaidOrder;
 use Acquired\Payments\Service\MultishippingService;
 use Magento\Sales\Model\ResourceModel\Order\CollectionFactory as OrderCollectionFactory;
 
@@ -50,7 +51,8 @@ class Context
         public readonly InvoiceSender $invoiceSender,
         public readonly OrderSender $orderSender,
         public readonly MultishippingService $multishippingService,
-        public readonly OrderCollectionFactory $orderCollectionFactory
+        public readonly OrderCollectionFactory $orderCollectionFactory,
+        public readonly InvoicePaidOrder $invoicePaidOrder
     ) { }
 
 }

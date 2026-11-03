@@ -12,9 +12,9 @@
 namespace Acquired\Payments\Model\Webhook\Processor;
 
 
-use Magento\Sales\Model\Order;
 use Acquired\Payments\Service\MultishippingService;
 use Acquired\Payments\Controller\Hosted\Context as HostedContext;
+use Acquired\Payments\Exception\Webhook\WebhookOrderNotFoundException;
 
 /**
  * @class StatusUpdateProcessor
@@ -50,12 +50,12 @@ class MultishippingStatusUpdateProcessor extends AbstractProcessor
 
         $order = $this->getOrderByIncrementId($incrementId);
         if (!$order) {
-            return $this->createResponse(__('Order #%1 not found.', $incrementId));
+            throw new WebhookOrderNotFoundException(__('Order #%1 not found.', $incrementId));
         }
 
         $multishippingItem = $this->webhookContext->multishippingService->getMultishippingByReservedOrderId($order->getIncrementId());
         if (!$multishippingItem) {
-            return $this->createResponse(__('Multishipping order #%1 not found.', $incrementId));
+            throw new WebhookOrderNotFoundException(__('Multishipping order #%1 not found.', $incrementId));
         }
 
         $multishippingItems = $this->webhookContext->multishippingService->getMultishippingByTransactionId($multishippingItem->getAcquiredTransactionId());
@@ -106,17 +106,19 @@ class MultishippingStatusUpdateProcessor extends AbstractProcessor
     public function bulkInvoiceOrders($orders, $transactionId)
     {
         $success = true;
+        $retryable = false;
         $messages = [];
 
         foreach ($orders as $order) {
-            $order->setState(Order::STATE_PROCESSING);
             $invoiceResult = $this->invoiceOrder($order, $order->getIncrementId(), $transactionId);
             $success = $success && $invoiceResult['success'];
+            $retryable = $retryable || !empty($invoiceResult['retryable']);
             $messages[] = $invoiceResult;
         }
 
         $response = [
             'success' => $success,
+            'retryable' => $retryable,
             'messages' => $messages
         ];
 

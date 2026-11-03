@@ -12,8 +12,8 @@
 namespace Acquired\Payments\Model\Webhook\Processor;
 
 
-use Magento\Sales\Model\Order;
 use Acquired\Payments\Controller\Hosted\Context as HostedContext;
+use Acquired\Payments\Exception\Webhook\WebhookOrderNotFoundException;
 
 /**
  * @class OrderStatusUpdateProcessor
@@ -43,7 +43,7 @@ class OrderStatusUpdateProcessor extends AbstractProcessor
 
         $order = $this->getOrderByIncrementId($incrementId);
         if (!$order) {
-            return $this->createResponse(__('Order #%1 not found.', $incrementId));
+            throw new WebhookOrderNotFoundException(__('Order #%1 not found.', $incrementId));
         }
 
         if ($webhookBody['status'] === self::STATUS_CANCELED) {
@@ -54,7 +54,6 @@ class OrderStatusUpdateProcessor extends AbstractProcessor
             ($webhookBody['status'] === self::STATUS_EXECUTED || $webhookBody['status'] === self::STATUS_SETTLED || $webhookBody['status'] === self::STATUS_SUCCESS)
             && $this->canInvoiceOrder($order)
         ) {
-            $order->setState(Order::STATE_PROCESSING);
             return $this->invoiceOrder($order, $incrementId, $webhookBody['transaction_id']);
         }
 

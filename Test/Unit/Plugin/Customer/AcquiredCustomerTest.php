@@ -19,7 +19,6 @@ use Acquired\Payments\Api\AcquiredCustomerRepositoryInterface;
 use Magento\Customer\Api\CustomerRepositoryInterface;
 use Magento\Customer\Api\Data\CustomerInterface;
 use Magento\Framework\Api\ExtensionAttributesFactory;
-use Magento\Customer\Api\Data\CustomerExtensionInterface;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Acquired\Payments\Api\Data\AcquiredCustomerInterface;
 use Magento\Framework\Phrase;
@@ -43,10 +42,7 @@ class AcquiredCustomerTest extends TestCase
         $this->customerRepositoryMock = $this->createMock(CustomerRepositoryInterface::class);
         $this->customerMock = $this->createMock(CustomerInterface::class);
         $this->acquiredCustomerMock = $this->createMock(AcquiredCustomerInterface::class);
-        $this->extensionAttributesMock = $this->getMockBuilder(CustomerExtensionInterface::class)
-            ->setMethods(['getAcquiredCustomerId', 'setAcquiredCustomerId'])
-            ->disableOriginalConstructor()
-            ->getMockForAbstractClass();
+        $this->extensionAttributesMock = $this->createMock(AcquiredCustomerExtensionInterface::class);
 
         $this->acquiredCustomerRepositoryMock->method('getByCustomerId')
             ->willReturnCallback(function ($arg) {
@@ -96,10 +92,7 @@ class AcquiredCustomerTest extends TestCase
     public function testAfterGetSetsAcquiredCustomerId()
     {
         $extensionFactoryMock = $this->createMock(ExtensionAttributesFactory::class);
-        $extensionAttributesMock = $this->getMockBuilder(CustomerExtensionInterface::class)
-            ->setMethods(['getAcquiredCustomerId', 'setAcquiredCustomerId'])
-            ->disableOriginalConstructor()
-            ->getMockForAbstractClass();
+        $extensionAttributesMock = $this->createMock(AcquiredCustomerExtensionInterface::class);
         $customerMock = $this->createMock(CustomerInterface::class);
         $customerMock->method('getId')
             ->willReturn(123);
@@ -144,10 +137,7 @@ class AcquiredCustomerTest extends TestCase
     public function testAfterGetByIdSetsAcquiredCustomerId()
     {
         $extensionFactoryMock = $this->createMock(ExtensionAttributesFactory::class);
-        $extensionAttributesMock = $this->getMockBuilder(CustomerExtensionInterface::class)
-            ->setMethods(['getAcquiredCustomerId', 'setAcquiredCustomerId'])
-            ->disableOriginalConstructor()
-            ->getMockForAbstractClass();
+        $extensionAttributesMock = $this->createMock(AcquiredCustomerExtensionInterface::class);
         $customerMock = $this->createMock(CustomerInterface::class);
         $customerMock->method('getId')
             ->willReturn(123);

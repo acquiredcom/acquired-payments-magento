@@ -2,6 +2,11 @@
 
 All notable release changes to this project will be documented in this file.
 
+## [Unreleased]
+- Fix the Pay By Bank redirect URL, which pointed at a page that does not exist, including on stores where it was saved in admin
+- Prevent a Pay By Bank order from being invoiced twice when payment notifications arrive at the same time, and ask Acquired to retry when invoicing could not complete
+- Return clear error codes to Acquired for webhooks with missing headers (400) or unknown orders (404), so failed deliveries are retried
+
 ## [1.0.4] - Release Version
 - Fix auth token caching on multi-website setups
 - Improve PHP compatibility

@@ -75,8 +75,7 @@ class HostedCheckoutBuilderTest extends AbstractBuilderTestCase
             'amount' => 100.00
         ];
 
-        $this->urlBuilder->method('getUrl')
-            ->willReturn('https://example.com/redirect', 'https://example.com/webhook');
+        $this->givenUrls('https://example.com/redirect', 'https://example.com/webhook');
 
         $result = $this->hostedCheckoutBuilder->build($buildSubject);
 
@@ -109,8 +108,7 @@ class HostedCheckoutBuilderTest extends AbstractBuilderTestCase
             'amount' => 100.00
         ];
 
-        $this->urlBuilder->method('getUrl')
-            ->willReturn('http://example.com/redirect');
+        $this->givenUrls('http://example.com/redirect', 'https://example.com/webhook');
 
         $this->hostedCheckoutBuilder->build($buildSubject);
     }
@@ -125,10 +123,19 @@ class HostedCheckoutBuilderTest extends AbstractBuilderTestCase
             'amount' => 100.00
         ];
 
-        $this->urlBuilder->method('getUrl')
-            ->willReturn('https://example.com/redirect', 'http://example.com/webhook');
+        $this->givenUrls('https://example.com/redirect', 'http://example.com/webhook');
 
         $this->hostedCheckoutBuilder->build($buildSubject);
+    }
+
+    private function givenUrls(string $redirectUrl, string $webhookUrl): void
+    {
+        $this->hostedConfig->method('getRedirectUrl')->willReturn('acquired/hosted/response');
+        $this->hostedConfig->method('getWebhookUrl')->willReturn('acquired/webhook/index');
+        $this->urlBuilder->method('getUrl')->willReturnMap([
+            ['acquired/hosted/response', null, $redirectUrl],
+            ['acquired/webhook/index', null, $webhookUrl],
+        ]);
     }
 
     private function createPaymentMock()
