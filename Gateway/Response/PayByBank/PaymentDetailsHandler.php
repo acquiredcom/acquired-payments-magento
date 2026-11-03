@@ -14,6 +14,7 @@ declare(strict_types=1);
 namespace Acquired\Payments\Gateway\Response\PayByBank;
 
 use Exception;
+use Acquired\Payments\Controller\Hosted\Context as HostedContext;
 use Acquired\Payments\Exception\Command\HandlerException;
 use Magento\Payment\Gateway\Helper\SubjectReader;
 use Magento\Payment\Gateway\Response\HandlerInterface;
@@ -83,6 +84,11 @@ class PaymentDetailsHandler implements HandlerInterface
     {
         if (!empty($transaction['link_id'])) {
             $payment->setAdditionalInformation('link_id', $transaction['link_id']);
+        }
+
+        $incrementId = $payment->getOrder()->getIncrementId();
+        if ($incrementId) {
+            $payment->setAdditionalInformation(HostedContext::ACQUIRED_ORDER_IDS, [$incrementId]);
         }
     }
 }

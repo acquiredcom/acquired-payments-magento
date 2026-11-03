@@ -21,6 +21,7 @@ use Magento\Payment\Gateway\Request\BuilderInterface;
 use Magento\Framework\UrlInterface;
 use Acquired\Payments\Exception\Command\BuilderException;
 use Acquired\Payments\Gateway\Config\Hosted\Config as HostedConfig;
+use Acquired\Payments\Gateway\Config\Card\Config as CardConfig;
 use Magento\Store\Model\StoreManagerInterface;
 use Acquired\Payments\Api\AcquiredCustomerRepositoryInterface;
 use Acquired\Payments\Model\Api\CreateAcquiredCustomer;
@@ -43,6 +44,7 @@ class HostedCheckoutBuilder implements BuilderInterface
      * @param CreateAcquiredCustomer $createAcquiredCustomer
      * @param GetTransactionAddressData $getTransactionAddressData
      * @param CartRepositoryInterface $quoteRepository
+     * @param CardConfig $cardConfig
      *
      */
     public function __construct(
@@ -52,7 +54,8 @@ class HostedCheckoutBuilder implements BuilderInterface
         private readonly HostedConfig $hostedConfig,
         private readonly CreateAcquiredCustomer $createAcquiredCustomer,
         private readonly GetTransactionAddressData $getTransactionAddressData,
-        private readonly CartRepositoryInterface $quoteRepository
+        private readonly CartRepositoryInterface $quoteRepository,
+        private readonly CardConfig $cardConfig
     ) {
     }
 
@@ -104,10 +107,12 @@ class HostedCheckoutBuilder implements BuilderInterface
      * @param float $amount
      * @param array $customData
      * @return array
+     * @throws BuilderException
      */
     public function getData(int $quoteId, $orderId, $amount, array $customData = []) : array
     {
         $quote = $this->quoteRepository->get($quoteId);
+        $storeId = (int) $quote->getStoreId();
 
         $store = $this->storeManager->getStore();
         $currencyCode = $store instanceof Store ? $store->getCurrentCurrencyCode() : $quote->getCurrency()->getStoreCurrencyCode();
@@ -138,12 +143,18 @@ class HostedCheckoutBuilder implements BuilderInterface
             $payload['transaction']['custom2'] = $customData['custom2'];
         }
 
+        $payload['tds'] = $this->getTdsData($storeId);
+
         $payload['customer'] = [];
 
         if (isset($customData, $customData['customer_id'])) {
-            $acquiredCustomer = $this->createAcquiredCustomer->execute($customData['customer_id']);
-            if ($acquiredCustomer && isset($acquiredCustomer['customer_id'])) {
-                $payload['customer']['customer_id'] = $acquiredCustomer['customer_id'];
+            try {
+                $acquiredCustomerId = $this->createAcquiredCustomer->getOrCreateAcquiredCustomerId((int) $customData['customer_id']);
+                if ($acquiredCustomerId) {
+                    $payload['customer']['customer_id'] = $acquiredCustomerId;
+                }
+            } catch (Exception $e) {
+                $this->logger->warning(__('Acquired customer unavailable for order %1: %2', $orderId, $e->getMessage()));
             }
         }
 
@@ -155,5 +166,31 @@ class HostedCheckoutBuilder implements BuilderInterface
         $payload['customer']['shipping'] = $addressData->getShipping() ?? [];
 
         return $payload;
+    }
+
+    /**
+     * @param int $storeId
+     * @return array
+     * @throws BuilderException
+     */
+    private function getTdsData(int $storeId): array
+    {
+        if (!$this->cardConfig->isTdsActive($storeId)) {
+            return ['is_active' => false];
+        }
+
+        $contactUrl = (string) $this->cardConfig->getTdsContactUrl($storeId);
+        if (strpos($contactUrl, 'https://') !== 0) {
+            throw new BuilderException(__('3-D Secure contact URL must be HTTPS.'));
+        }
+
+        $tds = ['is_active' => true, 'contact_url' => $contactUrl];
+
+        $challengePreference = $this->cardConfig->getTdsChallengePreference($storeId);
+        if ($challengePreference) {
+            $tds['challenge_preference'] = $challengePreference;
+        }
+
+        return $tds;
     }
 }

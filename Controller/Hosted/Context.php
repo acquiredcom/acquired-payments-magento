@@ -28,6 +28,7 @@ use Acquired\Payments\Gateway\Config\Basic as BasicConfig;
 use Acquired\Payments\Service\MultishippingService;
 use Magento\Sales\Model\ResourceModel\Order\CollectionFactory as OrderCollectionFactory;
 use Acquired\Payments\Client\Gateway;
+use Acquired\Payments\Service\CreatePaymentLink;
 
 /**
  * @class Context
@@ -38,6 +39,7 @@ class Context
 {
 
     const HOSTED_ORDER_ID_RETRY_IDENTIFIER = '-ACQR-';
+    const ACQUIRED_ORDER_IDS = 'acquired_order_ids';
 
     public function __construct(
         public readonly PageFactory $pageFactory,
@@ -54,7 +56,8 @@ class Context
         public readonly HttpContext $httpContext,
         public readonly MultishippingService $multishippingService,
         public readonly OrderCollectionFactory $orderCollectionFactory,
-        public readonly Gateway $gateway
+        public readonly Gateway $gateway,
+        public readonly CreatePaymentLink $createPaymentLink
     ) {
     }
 }

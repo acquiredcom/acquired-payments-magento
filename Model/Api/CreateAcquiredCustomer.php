@@ -70,6 +70,26 @@ class CreateAcquiredCustomer
     }
 
     /**
+     * Get the stored Acquired customer ID, creating the Acquired customer if there is none yet.
+     *
+     * Unlike execute(), it needs no customer session and does not fetch the customer from Acquired.
+     *
+     * @param int $customerId
+     * @return string|null
+     * @throws LocalizedException
+     */
+    public function getOrCreateAcquiredCustomerId(int $customerId): ?string
+    {
+        try {
+            $acquiredCustomerId = $this->acquiredCustomerRepository->getByCustomerId($customerId)->getAcquiredCustomerId();
+        } catch (NoSuchEntityException) {
+            $acquiredCustomerId = $this->createCustomer($customerId)['customer_id'] ?? null;
+        }
+
+        return $acquiredCustomerId ? (string) $acquiredCustomerId : null;
+    }
+
+    /**
      * Create acquired customer
      *
      * @param int|null $customerId

@@ -17,7 +17,7 @@ use Exception;
 use Psr\Log\LoggerInterface;
 use Magento\Payment\Gateway\Http\ClientInterface;
 use Magento\Payment\Gateway\Http\TransferInterface;
-use Acquired\Payments\Client\Gateway;
+use Acquired\Payments\Service\CreatePaymentLink;
 use Acquired\Payments\Exception\Command\RequestException;
 use Magento\Sales\Api\OrderRepositoryInterface;
 
@@ -25,11 +25,11 @@ class HostedCheckout implements ClientInterface
 {
 
     /**
-     * @param Gateway $gateway
+     * @param CreatePaymentLink $createPaymentLink
      * @param LoggerInterface $logger
      */
     public function __construct(
-        private readonly Gateway $gateway,
+        private readonly CreatePaymentLink $createPaymentLink,
         private readonly LoggerInterface $logger,
         private readonly OrderRepositoryInterface $orderRepository
     ) {
@@ -67,7 +67,7 @@ class HostedCheckout implements ClientInterface
 
         if (!$quote || ($quote && !$quote->getIsMultiShipping())) {
             try {
-                $response = $this->gateway->getPaymentLinks()->generateLinkId($body);
+                $response = $this->createPaymentLink->execute($body);
                 $this->logger->debug(
                     __('Sale transaction request placed successfully.'),
                     [

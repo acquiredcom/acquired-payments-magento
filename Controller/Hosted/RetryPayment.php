@@ -72,9 +72,27 @@ class RetryPayment extends AbstractAction implements CsrfAwareActionInterface, H
         $requestData = $isMultishipping ? $this->processMultishipping($order) : $this->hostedContext->hostedCheckoutBuilder->getData((int) $order->getQuoteId(), $order->getIncrementId(), $amount, $customData);
         $requestData['transaction']['order_id'] = $requestData['transaction']['order_id'] . HostedContext::HOSTED_ORDER_ID_RETRY_IDENTIFIER . time();
 
-        $response = $this->hostedContext->gateway->getPaymentLinks()->generateLinkId($requestData);
+        $response = $this->hostedContext->createPaymentLink->execute($requestData);
+
+        if (!$isMultishipping) {
+            $this->addAcquiredOrderId($order->getPayment(), $requestData['transaction']['order_id']);
+        }
 
         return $response;
+    }
+
+    /**
+     * Records the order ID sent to Acquired so unpaid orders can be checked against every attempt.
+     *
+     * @param \Magento\Sales\Model\Order\Payment $payment
+     * @param string $acquiredOrderId
+     * @return void
+     */
+    protected function addAcquiredOrderId($payment, string $acquiredOrderId): void
+    {
+        $acquiredOrderIds = (array) ($payment->getAdditionalInformation(HostedContext::ACQUIRED_ORDER_IDS) ?? []);
+        $acquiredOrderIds[] = $acquiredOrderId;
+        $payment->setAdditionalInformation(HostedContext::ACQUIRED_ORDER_IDS, $acquiredOrderIds);
     }
 
     protected function checkMultishipping($order)
