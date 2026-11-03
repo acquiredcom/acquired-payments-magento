@@ -435,5 +435,10 @@
             <argument name="logger" xsi:type="object">AcquiredCronLogger</argument>
         </arguments>
     </type>
+    <type name="Acquired\Payments\Cron\CancelPendingOrders">
+        <arguments>
+            <argument name="logger" xsi:type="object">AcquiredCronLogger</argument>
+        </arguments>
+    </type>
     <!-- END CRON LOGGERS -->
 </config>

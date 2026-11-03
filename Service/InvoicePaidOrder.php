@@ -32,7 +32,7 @@ use Magento\Sales\Model\Service\InvoiceService;
  */
 class InvoicePaidOrder
 {
-    private const LOCK_PREFIX = 'acquired_invoice_';
+    public const LOCK_PREFIX = 'acquired_invoice_';
     private const LOCK_TIMEOUT = 10;
 
     /**
