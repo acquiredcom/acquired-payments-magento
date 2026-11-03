@@ -36,7 +36,8 @@ abstract class AbstractClient
     private const CACHE_KEY = 'acquired_access_token';
 
     protected $excludedMidEndpoints = [
-        'payment-links'
+        'payment-links',
+        'transactions'
     ];
 
     /**
