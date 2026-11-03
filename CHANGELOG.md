@@ -6,6 +6,9 @@ All notable release changes to this project will be documented in this file.
 - Fix the Pay By Bank redirect URL, which pointed at a page that does not exist, including on stores where it was saved in admin
 - Prevent a Pay By Bank order from being invoiced twice when payment notifications arrive at the same time, and ask Acquired to retry when invoicing could not complete
 - Return clear error codes to Acquired for webhooks with missing headers (400) or unknown orders (404), so failed deliveries are retried
+- Send the 3-D Secure settings with Pay By Bank payment links, using the settings of the order's store
+- Use the stored Acquired customer for Pay By Bank payment links, and create the link without it if Acquired rejects it
+- Check with Acquired before cancelling an unpaid Pay By Bank order after 24 hours, invoicing it instead if it was paid, including on a retried payment
 
 ## [1.0.4] - Release Version
 - Fix auth token caching on multi-website setups
