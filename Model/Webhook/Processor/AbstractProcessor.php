@@ -115,11 +115,12 @@ abstract class AbstractProcessor
      *
      * @param string $message The message describing the outcome of the process.
      * @param bool $success Optional. Indicates whether the process was successful. Default is false.
+     * @param bool $retryable Optional. Whether Acquired should redeliver the webhook. Default is false.
      * @return array Associative array containing the success status and message.
      */
-    protected function createResponse(string $message, bool $success = false): array
+    protected function createResponse(string $message, bool $success = false, bool $retryable = false): array
     {
-        return ['success' => $success, 'message' => $message];
+        return ['success' => $success, 'message' => $message, 'retryable' => $retryable];
     }
 
     protected function canInvoiceOrder(OrderInterface $order): bool
@@ -143,11 +144,12 @@ abstract class AbstractProcessor
      * @param OrderInterface $order The order entity to be cancelled.
      * @param string $incrementId The increment ID of the order to provide context in the response.
      * @param string $transactionId New and latest Acquired transaction Id.
+     * @param bool $isMultishipping Whether the order is part of a multishipping checkout.
      * @return array Associative array indicating the success status and message of the cancellation action.
      */
-    protected function invoiceOrder(OrderInterface $order, string $incrementId, string $transactionId): array
+    protected function invoiceOrder(OrderInterface $order, string $incrementId, string $transactionId, bool $isMultishipping = false): array
     {
-        return $this->webhookContext->invoicePaidOrder->execute((int) $order->getEntityId(), $transactionId);
+        return $this->webhookContext->invoicePaidOrder->execute((int) $order->getEntityId(), $transactionId, $isMultishipping);
     }
 
     /**
@@ -167,7 +169,7 @@ abstract class AbstractProcessor
             $this->webhookContext->orderManagement->cancel($order->getEntityId());
             return $this->createResponse( __('Order #%1 cancelled successfully.', $incrementId), true);
         } catch (LocalizedException $e) {
-            return $this->createResponse( __('Error cancelling order #%1: %2', $incrementId, $e->getMessage()));
+            return $this->createResponse( __('Error cancelling order #%1: %2', $incrementId, $e->getMessage()), false, true);
         }
     }
 

@@ -101,6 +101,24 @@ class IndexTest extends TestCase
         $this->controller->execute();
     }
 
+    public function testStatusUpdateWithNonStringOrderIdReturns400()
+    {
+        $this->givenRequest('{"webhook_type":"status_update","webhook_body":{"order_id":["000000007"],"status":"success","transaction_id":"t-1"}}', '2', 'hash');
+        $this->processorFactory->expects($this->never())->method('create');
+
+        $this->expectStatus(400);
+        $this->controller->execute();
+    }
+
+    public function testStatusUpdateWithoutStatusReturns400()
+    {
+        $this->givenRequest('{"webhook_type":"status_update","webhook_body":{"order_id":"000000007","transaction_id":"t-1"}}', '2', 'hash');
+        $this->processorFactory->expects($this->never())->method('create');
+
+        $this->expectStatus(400);
+        $this->controller->execute();
+    }
+
     public function testRetryableProcessingFailureReturns503()
     {
         $this->givenRequest(self::PAYLOAD, '2', 'hash');

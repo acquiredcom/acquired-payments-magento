@@ -24,7 +24,7 @@ use Magento\Framework\Setup\Patch\DataPatchInterface;
 class FixPayByBankRedirectUrl implements DataPatchInterface
 {
     private const CONFIG_PATH = 'payment/acquired_pay_by_bank/redirect_url';
-    private const BROKEN_VALUES = ['acquired/hosted/redirect', 'acquired/hosted/redirect/', '/acquired/hosted/redirect'];
+    private const BROKEN_VALUES = ['acquired/hosted/redirect', 'acquired/hosted/redirect/', '/acquired/hosted/redirect', '/acquired/hosted/redirect/'];
     private const FIXED_VALUE = 'acquired/hosted/response';
 
     /**
