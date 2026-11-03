@@ -42,7 +42,7 @@ class CreatePaymentLinkTest extends TestCase
             ->method('generateLinkId')
             ->willReturnCallback(function (array $sent) {
                 if (isset($sent['customer']['customer_id'])) {
-                    throw new ApiCallException(__('Customer is invalid.'));
+                    throw new ApiCallException(__('Customer is invalid.'), null, 400);
                 }
                 $this->assertSame(['billing' => []], $sent['customer']);
 
@@ -50,6 +50,28 @@ class CreatePaymentLinkTest extends TestCase
             });
 
         $this->assertSame('link-1', $this->createPaymentLink->execute($payload)['link_id']);
+    }
+
+    public function testDoesNotRetryAfterServerError()
+    {
+        $this->paymentLinks->expects($this->once())
+            ->method('generateLinkId')
+            ->willThrowException(new ApiCallException(__('Bad gateway'), null, 502));
+
+        $this->expectException(ApiCallException::class);
+
+        $this->createPaymentLink->execute(['transaction' => ['order_id' => '000000007'], 'customer' => ['customer_id' => 'acq-1']]);
+    }
+
+    public function testDoesNotRetryAfterTimeout()
+    {
+        $this->paymentLinks->expects($this->once())
+            ->method('generateLinkId')
+            ->willThrowException(new ApiCallException(__('Unexpected API error: timed out')));
+
+        $this->expectException(ApiCallException::class);
+
+        $this->createPaymentLink->execute(['transaction' => ['order_id' => '000000007'], 'customer' => ['customer_id' => 'acq-1']]);
     }
 
     public function testDoesNotRetryWithoutCustomer()

@@ -14,6 +14,7 @@ declare(strict_types=1);
 namespace Acquired\Payments\Service;
 
 use Acquired\Payments\Client\Gateway;
+use Acquired\Payments\Exception\Api\ApiCallException;
 use Exception;
 use Psr\Log\LoggerInterface;
 
@@ -24,6 +25,8 @@ use Psr\Log\LoggerInterface;
  */
 class CreatePaymentLink
 {
+    private const VALIDATION_ERROR_CODES = [400, 422];
+
     /**
      * @param Gateway $gateway
      * @param LoggerInterface $logger
@@ -46,7 +49,11 @@ class CreatePaymentLink
         try {
             return $this->gateway->getPaymentLinks()->generateLinkId($payload);
         } catch (Exception $e) {
-            if (empty($payload['customer']['customer_id'])) {
+            if (
+                empty($payload['customer']['customer_id'])
+                || !$e instanceof ApiCallException
+                || !in_array($e->getCode(), self::VALIDATION_ERROR_CODES, true)
+            ) {
                 throw $e;
             }
 

@@ -20,6 +20,7 @@ use Acquired\Payments\Service\InvoicePaidOrder;
 use Acquired\Payments\Service\MultishippingService;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Framework\DB\Transaction;
+use Magento\Framework\Lock\LockManagerInterface;
 use Magento\Framework\Serialize\SerializerInterface;
 use Magento\Sales\Api\OrderManagementInterface;
 use Magento\Sales\Api\OrderRepositoryInterface;
@@ -55,7 +56,8 @@ class MultishippingStatusUpdateProcessorTest extends TestCase
             $this->createMock(OrderSender::class),
             $this->createMock(MultishippingService::class),
             $this->createMock(OrderCollectionFactory::class),
-            $this->invoicePaidOrder
+            $this->invoicePaidOrder,
+            $this->createMock(LockManagerInterface::class)
         );
 
         $this->processor = new MultishippingStatusUpdateProcessor($basicConfig, $serializer, $webhookContext);

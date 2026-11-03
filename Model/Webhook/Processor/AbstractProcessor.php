@@ -21,6 +21,7 @@ use Acquired\Payments\Model\Webhook\Context as WebhookContext;
 use Magento\Sales\Api\Data\OrderInterface;
 use Magento\Sales\Model\Order;
 use Acquired\Payments\Ui\Method\PayByBankProvider;
+use Acquired\Payments\Service\InvoicePaidOrder;
 
 /**
  * @class AbstractProcessor
@@ -161,15 +162,22 @@ abstract class AbstractProcessor
      */
     protected function cancelOrder(OrderInterface $order, string $incrementId): array
     {
-        if (!$order->canCancel()) {
-            return $this->createResponse(__('Order #%1 cannot be cancelled.', $incrementId));
+        $lockName = InvoicePaidOrder::LOCK_PREFIX . $order->getEntityId();
+        if (!$this->webhookContext->lockManager->lock($lockName, InvoicePaidOrder::LOCK_TIMEOUT)) {
+            return $this->createResponse(__('Order #%1 is being processed by another request.', $incrementId), false, true);
         }
 
         try {
-            $this->webhookContext->orderManagement->cancel($order->getEntityId());
+            // OrderManagement reloads the order and checks canCancel(), so an invoice made before the lock is respected.
+            if (!$this->webhookContext->orderManagement->cancel($order->getEntityId())) {
+                return $this->createResponse(__('Order #%1 cannot be cancelled.', $incrementId));
+            }
+
             return $this->createResponse( __('Order #%1 cancelled successfully.', $incrementId), true);
         } catch (LocalizedException $e) {
             return $this->createResponse( __('Error cancelling order #%1: %2', $incrementId, $e->getMessage()), false, true);
+        } finally {
+            $this->webhookContext->lockManager->unlock($lockName);
         }
     }
 

@@ -26,6 +26,7 @@ use Magento\Framework\Api\SortOrder;
 use Magento\Framework\Api\SortOrderBuilder;
 use Magento\Framework\App\Area;
 use Magento\Framework\Event\ManagerInterface;
+use Magento\Framework\FlagManager;
 use Magento\Framework\Lock\LockManagerInterface;
 use Magento\Sales\Api\OrderRepositoryInterface;
 use Magento\Sales\Model\Order;
@@ -44,6 +45,7 @@ class CancelPendingOrders
     private const TIMEOUT = 24 * 3600;
     private const PAGE_SIZE = 50;
     private const LOCK_TIMEOUT = 10;
+    private const CURSOR_FLAG = 'acquired_cancel_pending_orders_cursor';
     private const PAID_STATUSES = ['success', 'settled', 'executed'];
     private const NON_PAYMENT_TYPES = ['refund', 'void', 'credit', 'reversal'];
 
@@ -60,6 +62,7 @@ class CancelPendingOrders
      * @param LockManagerInterface $lockManager
      * @param OrderFactory $orderFactory
      * @param MultishippingService $multishippingService
+     * @param FlagManager $flagManager
      */
     public function __construct(
         private readonly LoggerInterface $logger,
@@ -73,7 +76,8 @@ class CancelPendingOrders
         private readonly InvoicePaidOrder $invoicePaidOrder,
         private readonly LockManagerInterface $lockManager,
         private readonly OrderFactory $orderFactory,
-        private readonly MultishippingService $multishippingService
+        private readonly MultishippingService $multishippingService,
+        private readonly FlagManager $flagManager
     ) {
     }
 
@@ -250,10 +254,14 @@ class CancelPendingOrders
     }
 
     /**
+     * Returns the next batch after the last order checked, so orders that stay unresolved can't block newer ones.
+     *
      * @return Order[]
      */
     private function getPendingOrders(): array
     {
+        $lastOrderId = (int) $this->flagManager->getFlagData(self::CURSOR_FLAG);
+
         $methodFilter = $this->filterBuilder->setField('extension_attribute_payment_method.method')
             ->setConditionType('eq')
             ->setValue(PayByBankProvider::CODE)
@@ -269,7 +277,12 @@ class CancelPendingOrders
             ->setValue(gmdate('Y-m-d H:i:s', time() - self::TIMEOUT))
             ->create();
 
-        $sortOrder = $this->sortOrderBuilder->setField('created_at')
+        $cursorFilter = $this->filterBuilder->setField('entity_id')
+            ->setConditionType('gt')
+            ->setValue($lastOrderId)
+            ->create();
+
+        $sortOrder = $this->sortOrderBuilder->setField('entity_id')
             ->setDirection(SortOrder::SORT_ASC)
             ->create();
 
@@ -277,11 +290,18 @@ class CancelPendingOrders
             ->addFilters([$methodFilter])
             ->addFilters([$stateFilter])
             ->addFilters([$createdFilter])
+            ->addFilters([$cursorFilter])
             ->addSortOrder($sortOrder)
             ->setPageSize(self::PAGE_SIZE)
             ->setCurrentPage(1)
             ->create();
 
-        return $this->orderRepository->getList($searchCriteria)->getItems();
+        $orders = $this->orderRepository->getList($searchCriteria)->getItems();
+
+        $lastOrder = end($orders);
+        $nextCursor = count($orders) < self::PAGE_SIZE || !$lastOrder ? 0 : (int) $lastOrder->getId();
+        $this->flagManager->saveFlag(self::CURSOR_FLAG, $nextCursor);
+
+        return $orders;
     }
 }

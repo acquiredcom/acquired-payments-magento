@@ -28,6 +28,7 @@ use Magento\Framework\Api\SearchCriteriaBuilderFactory;
 use Magento\Framework\Api\SortOrder;
 use Magento\Framework\Api\SortOrderBuilder;
 use Magento\Framework\Event\ManagerInterface;
+use Magento\Framework\FlagManager;
 use Magento\Framework\Lock\LockManagerInterface;
 use Magento\Sales\Api\Data\OrderSearchResultInterface;
 use Magento\Sales\Api\OrderRepositoryInterface;
@@ -53,6 +54,8 @@ class CancelPendingOrdersTest extends TestCase
     private $lockAvailable = true;
     private $multishippingService;
     private $freshOrder;
+    private $flagManager;
+    private $filterValues = [];
     private $cron;
 
     protected function setUp(): void
@@ -66,9 +69,12 @@ class CancelPendingOrdersTest extends TestCase
         $searchCriteriaBuilderFactory->method('create')->willReturn($searchCriteriaBuilder);
 
         $filterBuilder = $this->createMock(FilterBuilder::class);
-        foreach (['setField', 'setConditionType', 'setValue'] as $method) {
-            $filterBuilder->method($method)->willReturnSelf();
-        }
+        $filterBuilder->method('setField')->willReturnSelf();
+        $filterBuilder->method('setConditionType')->willReturnSelf();
+        $filterBuilder->method('setValue')->willReturnCallback(function ($value) use ($filterBuilder) {
+            $this->filterValues[] = $value;
+            return $filterBuilder;
+        });
         $filterBuilder->method('create')->willReturn($this->createMock(Filter::class));
 
         $sortOrderBuilder = $this->createMock(SortOrderBuilder::class);
@@ -96,6 +102,7 @@ class CancelPendingOrdersTest extends TestCase
         $orderFactory->method('create')->willReturn($this->freshOrder);
 
         $this->multishippingService = $this->createMock(MultishippingService::class);
+        $this->flagManager = $this->createMock(FlagManager::class);
 
         $this->cron = new CancelPendingOrders(
             $this->createMock(LoggerInterface::class),
@@ -109,7 +116,8 @@ class CancelPendingOrdersTest extends TestCase
             $this->invoicePaidOrder,
             $this->lockManager,
             $orderFactory,
-            $this->multishippingService
+            $this->multishippingService,
+            $this->flagManager
         );
     }
 
@@ -287,6 +295,53 @@ class CancelPendingOrdersTest extends TestCase
         $this->cron->execute();
     }
 
+    public function testFullBatchMovesCursorPastLastOrder()
+    {
+        $this->flagManager->method('getFlagData')->willReturn(120);
+        $orders = [];
+        for ($id = 121; $id < 171; $id++) {
+            $orders[$id] = $this->createSkippedOrder($id);
+        }
+        $this->givenOrderList($orders);
+
+        $this->flagManager->expects($this->once())->method('saveFlag')->with('acquired_cancel_pending_orders_cursor', 170);
+
+        $this->cron->execute();
+
+        $this->assertContains(120, $this->filterValues);
+    }
+
+    public function testPartialBatchRestartsFromTheBeginning()
+    {
+        $this->givenPendingOrder([self::INCREMENT_ID]);
+        $this->givenTransactions([self::INCREMENT_ID => [$this->transaction(self::INCREMENT_ID, 'success', 'txn-paid')]]);
+
+        $this->flagManager->expects($this->once())->method('saveFlag')->with('acquired_cancel_pending_orders_cursor', 0);
+
+        $this->cron->execute();
+    }
+
+    private function createSkippedOrder(int $id): Order
+    {
+        $payment = $this->createMock(Payment::class);
+        $payment->method('getAdditionalInformation')->willReturn(['00000' . $id]);
+        $this->transactionClient->method('list')->willThrowException(new ApiCallException(__('Timeout')));
+
+        $order = $this->createMock(Order::class);
+        $order->method('getId')->willReturn($id);
+        $order->method('getIncrementId')->willReturn('00000' . $id);
+        $order->method('getPayment')->willReturn($payment);
+
+        return $order;
+    }
+
+    private function givenOrderList(array $orders): void
+    {
+        $searchResult = $this->createMock(OrderSearchResultInterface::class);
+        $searchResult->method('getItems')->willReturn($orders);
+        $this->orderRepository->method('getList')->willReturn($searchResult);
+    }
+
     private function givenPendingOrder(?array $acquiredOrderIds, int $storeId = 1, ?RuntimeException $error = null): void
     {
         $payment = $this->createMock(Payment::class);
@@ -301,9 +356,7 @@ class CancelPendingOrdersTest extends TestCase
         $order->method('getOrderCurrencyCode')->willReturn('GBP');
         $order->method('getPayment')->willReturn($payment);
 
-        $searchResult = $this->createMock(OrderSearchResultInterface::class);
-        $searchResult->method('getItems')->willReturn([$order]);
-        $this->orderRepository->method('getList')->willReturn($searchResult);
+        $this->givenOrderList([self::ORDER_ID => $order]);
     }
 
     private function givenTransactions(array $transactionsByOrderId): void

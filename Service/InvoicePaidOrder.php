@@ -33,7 +33,7 @@ use Magento\Sales\Model\Service\InvoiceService;
 class InvoicePaidOrder
 {
     public const LOCK_PREFIX = 'acquired_invoice_';
-    private const LOCK_TIMEOUT = 10;
+    public const LOCK_TIMEOUT = 10;
 
     /**
      * @param LockManagerInterface $lockManager
@@ -110,7 +110,9 @@ class InvoicePaidOrder
             return $order->getState() === Order::STATE_PAYMENT_REVIEW;
         }
 
-        return $isMultishipping && $method === CardProvider::CODE;
+        return $isMultishipping
+            && $method === CardProvider::CODE
+            && !in_array($order->getState(), [Order::STATE_CANCELED, Order::STATE_CLOSED, Order::STATE_COMPLETE], true);
     }
 
     /**

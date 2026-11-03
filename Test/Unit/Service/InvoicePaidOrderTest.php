@@ -122,6 +122,21 @@ class InvoicePaidOrderTest extends TestCase
         $this->assertFalse($result['retryable']);
     }
 
+    public function testCancelledCardMultishippingOrderIsNotRetried()
+    {
+        $this->paymentMethod = CardProvider::CODE;
+        $this->givenLockAcquired();
+        $this->order->method('getState')->willReturn(Order::STATE_CANCELED);
+        $this->order->method('hasInvoices')->willReturn(false);
+
+        $this->invoiceService->expects($this->never())->method('prepareInvoice');
+
+        $result = $this->invoicePaidOrder->execute(self::ORDER_ID, self::TRANSACTION_ID, true);
+
+        $this->assertFalse($result['success']);
+        $this->assertFalse($result['retryable']);
+    }
+
     public function testOrderThatCannotBeInvoicedIsRetryable()
     {
         $this->givenLockAcquired();

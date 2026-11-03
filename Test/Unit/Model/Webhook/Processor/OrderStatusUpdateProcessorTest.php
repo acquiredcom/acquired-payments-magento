@@ -26,6 +26,7 @@ use Magento\Framework\Api\SearchCriteria;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Framework\DB\Transaction;
 use Magento\Framework\Exception\LocalizedException;
+use Magento\Framework\Lock\LockManagerInterface;
 use Magento\Framework\Serialize\SerializerInterface;
 use Magento\Sales\Api\Data\OrderSearchResultInterface;
 use Magento\Sales\Api\OrderManagementInterface;
@@ -50,6 +51,7 @@ class OrderStatusUpdateProcessorTest extends TestCase
     private $searchCriteriaBuilder;
     private $invoicePaidOrder;
     private $orderManagement;
+    private $lockAvailable = true;
     private $processor;
 
     protected function setUp(): void
@@ -80,7 +82,8 @@ class OrderStatusUpdateProcessorTest extends TestCase
             $this->createMock(OrderSender::class),
             $this->createMock(MultishippingService::class),
             $this->createMock(OrderCollectionFactory::class),
-            $this->invoicePaidOrder
+            $this->invoicePaidOrder,
+            $this->createLockManager()
         );
 
         $this->processor = new OrderStatusUpdateProcessor($this->basicConfig, $this->serializer, $webhookContext);
@@ -154,11 +157,41 @@ class OrderStatusUpdateProcessorTest extends TestCase
         $this->assertFalse($second['success']);
     }
 
+    public function testCancelledPaymentCancelsOrder()
+    {
+        $this->givenOrders([$this->createOrder()]);
+        $this->orderManagement->expects($this->once())->method('cancel')->with(7)->willReturn(true);
+
+        $result = $this->processor->execute($this->webhookData('cancelled'), $this->validHash(), '2');
+
+        $this->assertTrue($result['success']);
+    }
+
+    public function testOrderThatCannotBeCancelledIsAcknowledged()
+    {
+        $this->givenOrders([$this->createOrder()]);
+        $this->orderManagement->method('cancel')->willReturn(false);
+
+        $result = $this->processor->execute($this->webhookData('cancelled'), $this->validHash(), '2');
+
+        $this->assertFalse($result['success']);
+        $this->assertFalse($result['retryable']);
+    }
+
+    public function testCancellationWaitsForInvoicingLock()
+    {
+        $this->lockAvailable = false;
+        $this->givenOrders([$this->createOrder()]);
+        $this->orderManagement->expects($this->never())->method('cancel');
+
+        $result = $this->processor->execute($this->webhookData('cancelled'), $this->validHash(), '2');
+
+        $this->assertTrue($result['retryable']);
+    }
+
     public function testCancellationFailureIsRetryable()
     {
-        $order = $this->createOrder();
-        $order->method('canCancel')->willReturn(true);
-        $this->givenOrders([$order]);
+        $this->givenOrders([$this->createOrder()]);
         $this->orderManagement->method('cancel')
             ->willThrowException(new LocalizedException(__('Could not void payment')));
 
@@ -166,6 +199,14 @@ class OrderStatusUpdateProcessorTest extends TestCase
 
         $this->assertFalse($result['success']);
         $this->assertTrue($result['retryable']);
+    }
+
+    private function createLockManager(): LockManagerInterface
+    {
+        $lockManager = $this->createMock(LockManagerInterface::class);
+        $lockManager->method('lock')->willReturnCallback(fn () => $this->lockAvailable);
+
+        return $lockManager;
     }
 
     private function webhookData(string $status, string $orderId = '000000007'): array

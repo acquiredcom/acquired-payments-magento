@@ -23,6 +23,7 @@ use Magento\Sales\Api\OrderRepositoryInterface;
 use Magento\Sales\Api\OrderManagementInterface;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Framework\Exception\LocalizedException;
+use Magento\Framework\Lock\LockManagerInterface;
 use Magento\Sales\Model\Service\InvoiceService;
 use Magento\Framework\DB\Transaction;
 use Magento\Sales\Model\Order\Email\Sender\InvoiceSender;
@@ -52,7 +53,8 @@ class Context
         public readonly OrderSender $orderSender,
         public readonly MultishippingService $multishippingService,
         public readonly OrderCollectionFactory $orderCollectionFactory,
-        public readonly InvoicePaidOrder $invoicePaidOrder
+        public readonly InvoicePaidOrder $invoicePaidOrder,
+        public readonly LockManagerInterface $lockManager
     ) { }
 
 }

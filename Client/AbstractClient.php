@@ -154,7 +154,7 @@ abstract class AbstractClient
                 ]
             );
 
-            throw new ApiCallException($message);
+            throw new ApiCallException($message, $requestException, (int) $requestException->getCode());
         } catch (Throwable $e) {
             $message = __('Unexpected API error: %1', $e->getMessage());
             $this->logger->critical(

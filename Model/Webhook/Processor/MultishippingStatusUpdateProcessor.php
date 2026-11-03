@@ -72,7 +72,7 @@ class MultishippingStatusUpdateProcessor extends AbstractProcessor
         $orders = $orderCollection->getItems();
 
         if ($webhookBody['status'] === self::STATUS_CANCELED) {
-            return $this->bulkCancelOrders($orders, $webhookBody['transaction_id']);
+            return $this->bulkCancelOrders($orders, $webhookBody['transaction_id'] ?? null);
         }
 
         if (
